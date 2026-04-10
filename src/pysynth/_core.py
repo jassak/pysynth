@@ -149,3 +149,23 @@ class _Chain(Effect):
 
     def __repr__(self) -> str:
         return f"_Chain({self._a!r}, {self._b!r})"
+
+
+def _as_array(param: float | Signal, n: int) -> np.ndarray:
+    """Convert a float or Signal control parameter to a float64 array of length n.
+
+    Signal inputs are edge-padded (last value held) when shorter than n, or
+    truncated when longer. This is the correct semantic for control signals —
+    a filter cutoff or gain that runs short should hold its last value, not
+    snap to zero.
+
+    Raises ValueError if param is a zero-length Signal.
+    """
+    if isinstance(param, Signal):
+        if len(param.data) == 0:
+            raise ValueError("Signal used as control parameter has zero length")
+        arr = param.data.astype(np.float64)
+        if len(arr) >= n:
+            return arr[:n]
+        return np.pad(arr, (0, n - len(arr)), mode="edge")
+    return np.full(n, float(param), dtype=np.float64)
