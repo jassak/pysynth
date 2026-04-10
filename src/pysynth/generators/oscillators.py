@@ -75,6 +75,69 @@ class _Voice:
         return Signal(buf.astype(np.float32), sample_rate)
 
 
+class _EnvelopedVoice:
+    """Voice produced by an oscillator with a duck-typed envelope applied. Private."""
+
+    def __init__(self, voice: _Voice, envelope) -> None:
+        self._voice = voice
+        self._envelope = envelope
+
+    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
+        sig = self._voice.render(dur, sample_rate)
+        return self._envelope.apply(sig)
+
+
+class _EnvelopedOscillator:
+    """Generator produced by ``Oscillator * envelope``.
+
+    Satisfies the generator protocol: ``.at(hz) -> voice`` where
+    ``voice.render(dur, sr) -> Signal``.
+
+    The envelope is re-rendered per note at the correct duration via its
+    ``.apply(signal) -> Signal`` method — no pre-rendering required.
+    Any object with ``.apply(signal) -> Signal`` is a valid envelope here.
+    """
+
+    def __init__(self, osc: "Oscillator", envelope) -> None:
+        self._osc = osc
+        self._envelope = envelope
+
+    def at(self, hz: float | Signal) -> _EnvelopedVoice:
+        return _EnvelopedVoice(self._osc.at(hz), self._envelope)
+
+    def __repr__(self) -> str:
+        return f"_EnvelopedOscillator({self._osc!r}, {self._envelope!r})"
+
+
+class _ProductVoice:
+    """Voice produced by two oscillators multiplied together. Private."""
+
+    def __init__(self, a: _Voice, b: _Voice) -> None:
+        self._a = a
+        self._b = b
+
+    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
+        return self._a.render(dur, sample_rate) * self._b.render(dur, sample_rate)
+
+
+class _ProductOscillator:
+    """Oscillator-protocol object representing the pointwise product of two oscillators.
+
+    Satisfies the generator protocol: ``.at(hz) -> voice`` where
+    ``voice.render(dur, sr) -> Signal``.
+    """
+
+    def __init__(self, a: Oscillator, b: Oscillator) -> None:
+        self._a = a
+        self._b = b
+
+    def at(self, hz: float | Signal) -> _ProductVoice:
+        return _ProductVoice(self._a.at(hz), self._b.at(hz))
+
+    def __repr__(self) -> str:
+        return f"_ProductOscillator({self._a!r}, {self._b!r})"
+
+
 class Oscillator:
     """A pitch-free, algebraically composable waveform template.
 
@@ -87,9 +150,14 @@ class Oscillator:
 
     Oscillators form an algebra under ``+`` and ``*``:
 
-        ``osc * scalar``   — scale the output amplitude (returns new Oscillator)
-        ``scalar * osc``   — same (commutative)
-        ``osc1 + osc2``    — sum the two waveforms (returns new Oscillator)
+        ``osc * scalar``        — scale the output amplitude (returns new Oscillator)
+        ``scalar * osc``        — same (commutative)
+        ``osc1 + osc2``         — sum the two waveforms (returns new Oscillator)
+        ``osc1 * osc2``         — ring modulation; defers to Signal multiplication
+                                  at render time (returns _ProductOscillator)
+        ``osc * envelope``      — bake an envelope into the generator; envelope must
+                                  implement ``.apply(signal) -> Signal``; re-rendered
+                                  per note at the correct duration (returns _EnvelopedOscillator)
 
     These operations compose oscillator *definitions*, not rendered Signals.
     Audio is only produced after calling ``.at(hz).render(dur)``.
@@ -131,13 +199,19 @@ class Oscillator:
     # Algebra — all operators return new Oscillator instances              #
     # ------------------------------------------------------------------ #
 
-    def __mul__(self, scalar: float) -> Oscillator:
+    def __mul__(self, other: "Oscillator | float") -> "Oscillator | _ProductOscillator | _EnvelopedOscillator":
+        if isinstance(other, Oscillator):
+            return _ProductOscillator(self, other)
+        if hasattr(other, "apply"):  # duck-typed envelope: anything with .apply(signal) -> Signal
+            return _EnvelopedOscillator(self, other)
         result = object.__new__(Oscillator)
-        result._components = [(w, r, a * scalar, p) for w, r, a, p in self._components]
+        result._components = [(w, r, a * other, p) for w, r, a, p in self._components]
         return result
 
-    def __rmul__(self, scalar: float) -> Oscillator:
-        return self.__mul__(scalar)
+    def __rmul__(self, other: Oscillator | float) -> Oscillator | _ProductOscillator:
+        if isinstance(other, Oscillator):
+            return _ProductOscillator(other, self)
+        return self.__mul__(other)
 
     def __add__(self, other: Oscillator) -> Oscillator:
         result = object.__new__(Oscillator)

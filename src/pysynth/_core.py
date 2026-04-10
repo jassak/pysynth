@@ -10,12 +10,13 @@ SAMPLE_RATE = 44100
 
 @dataclass
 class Signal:
-    """A finite audio signal — a vector in the space of sampled audio.
+    """A finite audio signal — an element of a commutative ℝ-algebra.
 
-    Supports the full vector space interface:
+    Supports the full algebra interface:
         signal + signal   -> mix (shorter is zero-padded)
         signal + scalar   -> add constant to every sample (DC offset / FM carrier shift)
         scalar + signal   -> same (commutative)
+        signal * signal   -> pointwise (ring) modulation (truncated to shorter length)
         signal * scalar   -> scale amplitude
         scalar * signal   -> scale amplitude
         -signal           -> phase inversion
@@ -64,11 +65,19 @@ class Signal:
         """Addition is commutative: a + b == b + a."""
         return self.__add__(other)
 
-    def __mul__(self, scalar: float) -> Signal:
-        return Signal(self.data * scalar, self.sample_rate)
+    def __mul__(self, other: Signal | float) -> Signal:
+        if isinstance(other, Signal):
+            if self.sample_rate != other.sample_rate:
+                raise ValueError(
+                    f"Cannot multiply signals with different sample rates: "
+                    f"{self.sample_rate} vs {other.sample_rate}"
+                )
+            n = min(len(self.data), len(other.data))
+            return Signal(self.data[:n] * other.data[:n], self.sample_rate)
+        return Signal(self.data * np.float32(other), self.sample_rate)
 
-    def __rmul__(self, scalar: float) -> Signal:
-        return self.__mul__(scalar)
+    def __rmul__(self, other: Signal | float) -> Signal:
+        return self.__mul__(other)
 
     def __neg__(self) -> Signal:
         return Signal(-self.data, self.sample_rate)
