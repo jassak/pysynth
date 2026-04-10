@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pysynth._core import Effect, Signal
+from pysynth._core import Effect, Signal, _as_array
 
 
 class Tanh(Effect):
@@ -12,11 +12,12 @@ class Tanh(Effect):
     Higher drive = more harmonic content and compression.
     """
 
-    def __init__(self, drive: float = 1.0) -> None:
+    def __init__(self, drive: float | Signal = 1.0) -> None:
         self.drive = drive
 
     def __call__(self, sig: Signal) -> Signal:
-        data = np.tanh(sig.data * self.drive).astype(np.float32)
+        drive = _as_array(self.drive, len(sig.data)) if isinstance(self.drive, Signal) else self.drive
+        data = np.tanh(sig.data * drive).astype(np.float32)
         return Signal(data, sig.sample_rate)
 
 
@@ -27,15 +28,19 @@ class Clip(Effect):
     ``threshold`` is a linear amplitude value (0..1).
     """
 
-    def __init__(self, threshold: float = 0.5) -> None:
-        self.threshold = np.clip(threshold, 0.0, 1.0)
+    def __init__(self, threshold: float | Signal = 0.5) -> None:
+        self.threshold = threshold
 
     def __call__(self, sig: Signal) -> Signal:
-        data = np.clip(sig.data, -self.threshold, self.threshold).astype(np.float32)
+        if isinstance(self.threshold, Signal):
+            threshold = np.clip(_as_array(self.threshold, len(sig.data)), 0.0, 1.0)
+        else:
+            threshold = np.clip(self.threshold, 0.0, 1.0)
+        data = np.clip(sig.data, -threshold, threshold).astype(np.float32)
         # Renormalise so output peak matches input peak
         peak = np.max(np.abs(sig.data))
         if peak > 0:
-            data = data / self.threshold * peak
+            data = (data / threshold * peak).astype(np.float32)
         return Signal(data, sig.sample_rate)
 
 
@@ -47,12 +52,15 @@ class Overdrive(Effect):
     produced by symmetric clipping.
     """
 
-    def __init__(self, gain: float = 4.0, bias: float = 0.1) -> None:
+    def __init__(self, gain: float | Signal = 4.0, bias: float | Signal = 0.1) -> None:
         self.gain = gain
         self.bias = bias
 
     def __call__(self, sig: Signal) -> Signal:
-        x = sig.data * self.gain + self.bias
+        n = len(sig.data)
+        gain = _as_array(self.gain, n) if isinstance(self.gain, Signal) else self.gain
+        bias = _as_array(self.bias, n) if isinstance(self.bias, Signal) else self.bias
+        x = sig.data * gain + bias
         # Piecewise function with three regions
         data = np.where(
             x >= 1.0 / 3.0,
