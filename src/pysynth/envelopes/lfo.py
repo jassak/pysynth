@@ -42,5 +42,5 @@ class LFO:
 
         Values are in [offset - depth, offset + depth].
         """
-        raw = Oscillator(self.waveform).render(hz=self.rate, dur=duration, sample_rate=self.sample_rate)
+        raw = Oscillator(self.waveform).at(self.rate).render(duration, self.sample_rate)
         return raw * self.depth + self.offset

@@ -48,12 +48,39 @@ def _render_component(
     return _shape(waveform, phase_arr) * amplitude
 
 
+class _Voice:
+    """A pitched sound awaiting a duration. Private — only produced by ``Oscillator.at(hz)``.
+
+    Holds the oscillator's component list and the bound frequency.
+    ``render(dur)`` performs the actual synthesis loop directly.
+
+    The generator protocol is duck-typed: anything with
+    ``.render(dur, sample_rate) -> Signal`` is a valid voice. Custom generators
+    (FM, etc.) can define their own class without depending on this one.
+    """
+
+    def __init__(
+        self,
+        components: list[tuple[Waveform, float, float, float]],
+        hz: float | Signal,
+    ) -> None:
+        self._components = components
+        self._hz = hz
+
+    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
+        n = int(dur * sample_rate)
+        buf = np.zeros(n, dtype=np.float64)
+        for waveform, ratio, amplitude, phase in self._components:
+            buf += _render_component(waveform, self._hz * ratio, amplitude, phase, n, sample_rate)
+        return Signal(buf.astype(np.float32), sample_rate)
+
+
 class Oscillator:
     """A pitch-free, algebraically composable waveform template.
 
     An Oscillator defines *how* to produce a sound (waveform shape and harmonic
     structure) without committing to an absolute frequency. Frequency is
-    supplied at render time via ``render(hz, dur)``.
+    supplied via ``.at(hz)``, which returns a voice ready to render.
 
     The second constructor argument, ``ratio``, is a **relative frequency
     multiplier**. ``Oscillator("sine", 2)`` renders at twice the fundamental.
@@ -65,22 +92,26 @@ class Oscillator:
         ``osc1 + osc2``    — sum the two waveforms (returns new Oscillator)
 
     These operations compose oscillator *definitions*, not rendered Signals.
-    Audio is only produced when ``render`` is called.
+    Audio is only produced after calling ``.at(hz).render(dur)``.
 
     Examples::
 
-        # Additive synthesis: build a Hammond-like timbre as an oscillator
+        # Additive synthesis: build a Hammond-like timbre, then render it
         hammond = (Oscillator("sine")
                  + Oscillator("sine", 2) * 0.5
                  + Oscillator("sine", 3) * 0.25
                  + Oscillator("sine", 4) * 0.125)
-        sig = hammond.render(hz=220, dur=2.0)
+        sig = hammond.at(220).render(2.0)
 
         # FM synthesis: pass a modulator Signal as hz
-        mod = Oscillator("sine").render(hz=110, dur=2.0) * 60
-        carrier = Oscillator("sine").render(hz=220 + mod, dur=2.0)
+        mod = Oscillator("sine").at(110).render(2.0) * 60
+        sig = Oscillator("sine").at(220 + mod).render(2.0)
 
-        # Used in a Sequencer — no freq mutation needed
+        # LFO vibrato
+        vibrato = LFO(rate=5, depth=15, offset=440).render(2.0)
+        sig = Oscillator("sine").at(vibrato).render(2.0)
+
+        # Used in a Sequencer — Sequencer calls generator.at(hz).render(dur)
         Sequencer(notes, bpm=120).render(Oscillator("sine"), envelope=env)
     """
 
@@ -114,36 +145,20 @@ class Oscillator:
         return result
 
     # ------------------------------------------------------------------ #
-    # Rendering                                                            #
+    # Pitch application                                                    #
     # ------------------------------------------------------------------ #
 
-    def render(
-        self,
-        hz: float | Signal,
-        dur: float,
-        sample_rate: int = SAMPLE_RATE,
-    ) -> Signal:
-        """Render to a Signal at the given fundamental frequency.
+    def at(self, hz: float | Signal) -> _Voice:
+        """Fix the frequency, returning a voice ready to render.
 
         Parameters
         ----------
         hz:
             Fundamental frequency in Hz. Each component renders at ``hz * ratio``.
-            Accepts a constant float or a time-varying ``Signal`` (from an LFO,
-            another oscillator, etc.) for FM/vibrato/portamento effects.
-        dur:
-            Duration in seconds.
-        sample_rate:
-            Output sample rate. Defaults to 44100 Hz.
+            Accepts a constant float or a time-varying ``Signal`` (e.g. from an
+            ``LFO``) for vibrato, FM carrier offset, and portamento.
         """
-        n = int(dur * sample_rate)
-        buf = np.zeros(n, dtype=np.float64)
-
-        for waveform, ratio, amplitude, phase in self._components:
-            effective_freq = hz * ratio   # float*float  or  Signal*float
-            buf += _render_component(waveform, effective_freq, amplitude, phase, n, sample_rate)
-
-        return Signal(buf.astype(np.float32), sample_rate)
+        return _Voice(self._components, hz)
 
     def __repr__(self) -> str:
         if len(self._components) == 1:

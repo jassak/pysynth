@@ -20,6 +20,10 @@ class Sequencer:
         Tempo in beats per minute. Controls the mapping from beat durations to
         wall-clock seconds. Set to 60 to treat note durations as seconds.
 
+    The ``generator`` argument to ``render`` must implement the generator
+    protocol: ``generator.at(hz) -> Voice``, where ``Voice`` has
+    ``render(dur) -> Signal``. All ``Oscillator`` instances satisfy this.
+
     Usage::
 
         from pysynth.music import Scale, Note, Sequencer
@@ -59,16 +63,15 @@ class Sequencer:
             dur_samples = int(dur_seconds * sample_rate)
 
             if not note.is_rest:
-                note_sig = generator.render(hz=note.pitch.hz, dur=dur_seconds)
+                note_sig = generator.at(note.pitch.hz).render(dur_seconds, sample_rate)
 
                 if envelope is not None:
                     note_sig = envelope.apply(note_sig)
 
-                # Scale by velocity
-                data = note_sig.data * note.velocity
+                data = (note_sig * note.velocity).data
                 n = min(len(data), total_samples - offset)
                 buf[offset : offset + n] += data[:n]
 
-            offset += dur_samples
+            offset += dur_samples  # always advance, even for rests
 
         return Signal(buf, sample_rate)
