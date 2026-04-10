@@ -107,8 +107,8 @@ class Oscillator:
         mod = Oscillator("sine").at(110).render(2.0) * 60
         sig = Oscillator("sine").at(220 + mod).render(2.0)
 
-        # LFO vibrato
-        vibrato = LFO(rate=5, depth=15, offset=440).render(2.0)
+        # Vibrato via Signal arithmetic
+        vibrato = Oscillator("sine").at(5).render(2.0) * 15 + 440
         sig = Oscillator("sine").at(vibrato).render(2.0)
 
         # Used in a Sequencer — Sequencer calls generator.at(hz).render(dur)
@@ -156,7 +156,8 @@ class Oscillator:
         hz:
             Fundamental frequency in Hz. Each component renders at ``hz * ratio``.
             Accepts a constant float or a time-varying ``Signal`` (e.g. from an
-            ``LFO``) for vibrato, FM carrier offset, and portamento.
+            oscillator rendered at a low rate) for vibrato, FM carrier offset,
+            and portamento.
         """
         return _Voice(self._components, hz)
 

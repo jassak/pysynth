@@ -17,7 +17,7 @@ class LowPassFilter(Effect):
     ----------
     cutoff_hz:
         Cutoff frequency in Hz. Accepts a constant ``float`` or a time-varying
-        ``Signal`` (e.g. from an LFO) for a modulated filter sweep. When a
+        ``Signal`` for a modulated filter sweep. When a
         Signal, uses causal chunk-based filtering rather than zero-phase
         ``filtfilt``.
     """

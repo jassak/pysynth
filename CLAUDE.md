@@ -51,7 +51,8 @@ class FMSynth:
 ### Envelopes (`src/pysynth/envelopes/`)
 
 - **`ADSR(attack, decay, sustain, sustain_level, release)`** — `.render(duration?) -> Signal`, `.apply(signal) -> Signal`
-- **`LFO(waveform, rate, depth, offset)`** — `.render(duration) -> Signal` in `[offset-depth, offset+depth]`; used for vibrato, tremolo, FM modulation
+
+Modulation signals (LFO-style) are expressed directly via Signal arithmetic: `Oscillator("sine").at(rate).render(dur) * depth + offset`.
 
 ### Effects (`src/pysynth/effects/`)
 
