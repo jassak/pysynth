@@ -4,7 +4,7 @@ from pysynth.envelopes import ADSR, LFO
 from pysynth.effects import (
     LowPassFilter, HighPassFilter, BandPassFilter,
     Gain, Compressor, Limiter,
-    SimpleReverb,
+    SimpleReverb, DatorroReverb,
     Delay, Echo,
     Tanh, Clip, Overdrive,
 )
