@@ -1,0 +1,26 @@
+[project]
+name = "pysynth"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jason Sakellariou", email = "js.sakel@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.4",
+    "scipy>=1.17.1",
+    "sounddevice>=0.5.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipython>=9.12.0",
+    "pdbpp>=0.12.1",
+    "pytest>=9.0.3",
+]
