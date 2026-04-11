@@ -46,7 +46,7 @@ class Arpeggiator:
         chord = [Note(scale[i], 0.25) for i in [0, 1, 2, 3]]
         sig = Arpeggiator(chord, pattern="up", bpm=140).render(
             Oscillator("triangle"),
-            envelope=ADSR(0.005, 0.05, 0.1, 0.5, 0.05),
+            envelope=adsr(0.005, 0.05, 0.1, 0.5, 0.05),
             bars=4,
         )
     """

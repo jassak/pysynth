@@ -1,3 +1,3 @@
-from pysynth.envelopes.adsr import ADSR
+from pysynth.envelopes.envelope import Segment, Envelope, adsr
 
-__all__ = ["ADSR"]
+__all__ = ["Segment", "Envelope", "adsr"]

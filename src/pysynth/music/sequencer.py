@@ -28,11 +28,11 @@ class Sequencer:
 
         from pysynth.music import Scale, Note, Sequencer
         from pysynth.generators import Oscillator
-        from pysynth.envelopes import ADSR
+        from pysynth.envelopes import adsr
 
         scale = Scale(220, [1, 5/4, 3/2, 2])
         notes = [Note(scale[i], 0.5) for i in [0, 1, 2, 3, 2, 1, 0]]
-        env = ADSR(0.01, 0.05, 0.35, 0.7, 0.08)
+        env = adsr(0.01, 0.05, 0.35, 0.7, 0.08)
 
         sig = Sequencer(notes, bpm=120).render(Oscillator("sine"), envelope=env)
         sig.play()
