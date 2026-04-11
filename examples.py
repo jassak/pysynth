@@ -1,0 +1,497 @@
+"""
+examples.py — pysynth sound library
+Load in the REPL and call .play() on anything that catches your eye.
+
+  $ uv run ipython
+  >>> from examples import *
+  >>> drone.play()
+  >>> bass_seq.play()
+
+Everything is a function to keep import fast. Call it to get a Signal:
+  >>> bell().play()
+  >>> melody().play()
+"""
+
+from pysynth import (
+    SAMPLE_RATE,
+    Signal,
+    Generator,
+    Oscillator,
+    WhiteNoise,
+    PinkNoise,
+    Wavetable,
+    Segment,
+    Envelope,
+    adsr,
+    LowPassFilter,
+    HighPassFilter,
+    BandPassFilter,
+    Gain,
+    Compressor,
+    Limiter,
+    SimpleReverb,
+    DatorroReverb,
+    Delay,
+    Echo,
+    Tanh,
+    Clip,
+    Overdrive,
+    Pitch,
+    Note,
+    Scale,
+    Sequencer,
+    Arpeggiator,
+    Mixer,
+    pan,
+)
+
+DUR = 3.0
+
+
+# ---------------------------------------------------------------------------
+# Shared scales / envelopes (cheap to construct, not rendered yet)
+# ---------------------------------------------------------------------------
+
+ji_major = Scale(220, [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2])
+pentatonic = Scale(220, [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2])
+
+note_env = adsr(attack=0.01, decay=0.05, sustain=0.35, sustain_level=0.7, release=0.08)
+short_env = adsr(attack=0.005, decay=0.08, sustain=0.1, sustain_level=0.5, release=0.06)
+pluck_env = adsr(attack=0.005, decay=0.2, sustain=0.0, sustain_level=0.0, release=0.01)
+bell_env = adsr(attack=0.01, decay=0.4, sustain=0.0, sustain_level=0.0, release=0.01)
+bass_env = adsr(attack=0.005, decay=0.1, sustain=0.4, sustain_level=0.6, release=0.15)
+pad_env = adsr(attack=0.3, decay=0.2, sustain=1.5, sustain_level=0.8, release=0.5)
+
+
+# ---------------------------------------------------------------------------
+# 1. Basic tones
+# ---------------------------------------------------------------------------
+
+
+def sine_tone(hz=440, dur=DUR):
+    return Oscillator("sine").at(hz).render(dur)
+
+
+def square_tone(hz=220, dur=DUR):
+    return Oscillator("square").at(hz).render(dur)
+
+
+def saw_tone(hz=110, dur=DUR):
+    return Oscillator("saw").at(hz).render(dur)
+
+
+def pluck(hz=440):
+    """Short plucked sine — good for testing envelopes."""
+    return pluck_env.apply(Oscillator("sine").at(hz).render(0.6))
+
+
+# ---------------------------------------------------------------------------
+# 2. Additive synthesis
+# ---------------------------------------------------------------------------
+
+
+def organ(hz=220, dur=DUR):
+    """Hammond-style drawbar organ: 8 harmonic partials."""
+    osc = (
+        Oscillator("sine", ratio=1) * 0.80
+        + Oscillator("sine", ratio=2) * 0.60
+        + Oscillator("sine", ratio=3) * 0.40
+        + Oscillator("sine", ratio=4) * 0.30
+        + Oscillator("sine", ratio=5) * 0.20
+        + Oscillator("sine", ratio=6) * 0.15
+        + Oscillator("sine", ratio=8) * 0.10
+        + Oscillator("sine", ratio=10) * 0.05
+    )
+    return osc.at(hz).render(dur) * 0.25
+
+
+def detuned_saw(hz=110, dur=DUR):
+    """Two saws slightly detuned — fat unison sound."""
+    a = Oscillator("saw").at(hz * 1.004).render(dur)
+    b = Oscillator("saw").at(hz * 0.996).render(dur)
+    return (a + b) * 0.35
+
+
+# ---------------------------------------------------------------------------
+# 3. FM synthesis
+# ---------------------------------------------------------------------------
+
+
+def bell(hz=440, dur=DUR):
+    """FM bell: carrier + 2x modulator, high index."""
+    mod = Oscillator("sine").at(hz * 2.0).render(dur) * (hz * 3.5)
+    sig = Oscillator("sine").at(hz + mod).render(dur)
+    return bell_env.apply(sig)
+
+
+def fm_bass(hz=55, dur=DUR):
+    """Wobbly FM sub-bass."""
+    mod = Oscillator("sine").at(hz * 0.5).render(dur) * (hz * 2.0)
+    return Oscillator("sine").at(hz + mod).render(dur)
+
+
+def fm_metal(hz=200, dur=DUR):
+    """Inharmonic FM: irrational ratio makes it metallic."""
+    mod = Oscillator("sine").at(hz * 3.14).render(dur) * (hz * 8.0)
+    return Oscillator("sine").at(hz + mod).render(dur)
+
+
+# ---------------------------------------------------------------------------
+# 4. Vibrato & modulation
+# ---------------------------------------------------------------------------
+
+
+def vibrato(hz=440, rate=5.0, depth=15.0, dur=DUR):
+    """Pitch LFO vibrato."""
+    lfo = Oscillator("sine").at(rate).render(dur) * depth
+    return Oscillator("sine").at(hz + lfo).render(dur)
+
+
+def tremolo(hz=440, rate=7.0, depth=0.4, dur=DUR):
+    """Amplitude LFO tremolo."""
+    lfo = Oscillator("sine").at(rate).render(dur) * depth + (1.0 - depth)
+    return Oscillator("sine").at(hz).render(dur) * lfo
+
+
+def pitch_sweep(start_hz=200, end_hz=800, dur=DUR):
+    """Slow sinusoidal pitch sweep between two frequencies."""
+    mid = (start_hz + end_hz) / 2
+    depth = (end_hz - start_hz) / 2
+    lfo = Oscillator("sine").at(0.5 / dur * 2).render(dur) * depth + mid
+    return Oscillator("sine").at(lfo).render(dur)
+
+
+# ---------------------------------------------------------------------------
+# 5. Filters
+# ---------------------------------------------------------------------------
+
+
+def lp_sweep(hz=110, dur=DUR):
+    """Saw wave with LFO-swept low-pass filter (classic synth filter sweep)."""
+    src = Oscillator("saw").at(hz).render(dur) * 0.5
+    cutoff = Oscillator("sine").at(0.4).render(dur) * 1200 + 1400
+    return LowPassFilter(cutoff)(src)
+
+
+def wah(hz=110, rate=2.0, dur=DUR):
+    """Band-pass wah-wah effect."""
+    src = Oscillator("saw").at(hz).render(dur) * 0.5
+    center = Oscillator("sine").at(rate).render(dur) * 600 + 900
+    return BandPassFilter(center - 200, center + 200)(src)
+
+
+def resonant_sweep(hz=110, dur=DUR):
+    """High-order low-pass with fast sweep — nasal / resonant character."""
+    src = Oscillator("saw").at(hz).render(dur) * 0.5
+    cutoff = Oscillator("sine").at(0.25).render(dur) * 2000 + 2200
+    return LowPassFilter(cutoff, order=8)(src)
+
+
+# ---------------------------------------------------------------------------
+# 6. Distortion & saturation
+# ---------------------------------------------------------------------------
+
+
+def soft_clip(hz=110, dur=DUR):
+    return Tanh(drive=4.0)(Oscillator("saw").at(hz).render(dur) * 0.4)
+
+
+def hard_clip(hz=110, dur=DUR):
+    return Clip(threshold=0.3)(Oscillator("saw").at(hz).render(dur) * 0.6)
+
+
+def overdrive_tone(hz=110, dur=DUR):
+    """Overdrive + low-pass to tame harshness."""
+    sig = Oscillator("saw").at(hz).render(dur) * 0.4
+    return (Overdrive(gain=6.0, bias=0.1) | LowPassFilter(3000))(sig)
+
+
+def dynamic_drive(hz=110, dur=DUR):
+    """Drive amount modulated by slow LFO."""
+    sig = Oscillator("saw").at(hz).render(dur) * 0.4
+    drive = Oscillator("sine").at(0.3).render(dur) * 3.0 + 4.0
+    return Tanh(drive=drive)(sig)
+
+
+# ---------------------------------------------------------------------------
+# 7. Reverb & delay
+# ---------------------------------------------------------------------------
+
+
+def with_reverb(signal: Signal, room=0.6, wet=0.4) -> Signal:
+    return DatorroReverb(decay=room, wet=wet)(signal)
+
+
+def with_echo(signal: Signal, time=0.35, repeats=5) -> Signal:
+    return Echo(delay_time=time, repeats=repeats, decay=0.55, wet=0.5)(signal)
+
+
+def flanger(hz=440, dur=DUR):
+    """LFO-modulated short delay — classic flange sweep."""
+    src = Oscillator("sine").at(hz).render(dur)
+    lfo = Oscillator("sine").at(0.4).render(dur) * 0.003 + 0.005
+    return Delay(delay_time=lfo, feedback=0.6, wet=0.5)(src)
+
+
+def space_bell():
+    """FM bell with plate reverb and echo — very ambient."""
+    sig = bell(523, dur=1.5)
+    sig = DatorroReverb(decay=0.85, wet=0.5)(sig)
+    return Echo(delay_time=0.4, repeats=4, decay=0.7, wet=0.4)(sig)
+
+
+# ---------------------------------------------------------------------------
+# 8. Noise & percussion
+# ---------------------------------------------------------------------------
+
+
+def hihat(open=False):
+    dur = 0.4 if open else 0.08
+    env = adsr(0.001, dur * 0.8, 0.0, 0.0, 0.01)
+    return env.apply(HighPassFilter(8000)(WhiteNoise().render(dur + 0.02)))
+
+
+def snare():
+    env = adsr(0.001, 0.12, 0.0, 0.0, 0.01)
+    return env.apply(WhiteNoise().render(0.15) * 0.6 + Oscillator("sine").at(180).render(0.15) * 0.4)
+
+
+def kick():
+    env = adsr(0.001, 0.08, 0.0, 0.0, 0.01)
+    pitch = Oscillator("sine").at(80).render(0.15) * 0.8
+    body = Oscillator("sine").at(40).render(0.15) * 0.2
+    return env.apply(pitch + body)
+
+
+def drum_pattern():
+    """One bar of kick, snare, hi-hat rendered to a single Signal."""
+    k, s, h = kick(), snare(), hihat()
+    bar = Signal.silence(2.0)
+    beats = [0.0, 0.5, 1.0, 1.5]  # 4/4 at 120 bpm → 0.5s per beat
+    result = Signal.silence(2.0)
+    for t in beats:
+        n = int(t * SAMPLE_RATE)
+        # hi-hat on every beat
+        end = min(len(result.data), n + len(h.data))
+        result = Signal(result.data.copy())
+        result.data[n:end] += h.data[: end - n] * 0.5
+    # kick on 1, 3; snare on 2, 4
+    for t, src in [(0.0, k), (1.0, k), (0.5, s), (1.5, s)]:
+        n = int(t * SAMPLE_RATE)
+        end = min(len(result.data), n + len(src.data))
+        result.data[n:end] += src.data[: end - n]
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 9. Melodic sequences (CV/gate)
+# ---------------------------------------------------------------------------
+
+
+def melody():
+    """Ascending/descending ji-major scale on a sine oscillator."""
+    notes = [Note(ji_major[i], 0.5) for i in [0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 0]]
+    pitch, gate = Sequencer(notes, bpm=100).cv()
+    audio = Oscillator("sine").at(pitch).render(pitch.duration)
+    return audio * note_env.trigger(gate)
+
+
+def bass_line(repeats=2):
+    """Simple bass line with rests, rendered on a triangle+harmonic voice."""
+    notes = [
+        Note(ji_major[0], 1.0),
+        Note.rest(0.5),
+        Note(ji_major[4], 0.5),
+        Note(ji_major[2], 1.0),
+        Note.rest(0.5),
+        Note(ji_major[0] * 0.5, 0.5),  # sub-octave
+    ]
+    gen = Oscillator("triangle") + Oscillator("triangle", ratio=2) * 0.3
+    pitch, gate = Sequencer(notes, bpm=90).cv(repeats=repeats)
+    audio = gen.at(pitch).render(pitch.duration)
+    return audio * bass_env.trigger(gate)
+
+
+def pentatonic_groove(repeats=4):
+    """Pentatonic phrase with velocity shaping on a square wave."""
+    notes = [
+        Note(pentatonic[0], 0.25, velocity=1.0),
+        Note(pentatonic[2], 0.25, velocity=0.7),
+        Note(pentatonic[4], 0.25, velocity=0.9),
+        Note(pentatonic[3], 0.25, velocity=0.6),
+        Note(pentatonic[1], 0.50, velocity=0.8),
+        Note(pentatonic[5], 0.50, velocity=1.0),
+    ]
+    gen = Oscillator("square") + Oscillator("square", ratio=2) * 0.15
+    pitch, gate = Sequencer(notes, bpm=120).cv(repeats=repeats)
+    audio = gen.at(pitch).render(pitch.duration)
+    return audio * short_env.trigger(gate)
+
+
+# ---------------------------------------------------------------------------
+# 10. Arpeggiators
+# ---------------------------------------------------------------------------
+
+
+def _major_chord():
+    return [Note(ji_major[i], 0.25) for i in [0, 2, 4, 7]]
+
+
+def arp_up(bars=4, bpm=140):
+    pitch, gate = Arpeggiator(_major_chord(), pattern="up", note_duration=0.25, bpm=bpm).cv(bars=bars)
+    audio = Oscillator("sine").at(pitch).render(pitch.duration)
+    return audio * note_env.trigger(gate)
+
+
+def arp_updown(bars=4, bpm=160):
+    pitch, gate = Arpeggiator(_major_chord(), pattern="up_down", note_duration=0.125, bpm=bpm).cv(bars=bars)
+    audio = Oscillator("triangle").at(pitch).render(pitch.duration)
+    return audio * short_env.trigger(gate)
+
+
+def arp_random(bars=4, bpm=120):
+    gen = Oscillator("sine") + Oscillator("sine", ratio=3) * 0.3
+    pitch, gate = Arpeggiator(_major_chord(), pattern="random", note_duration=0.25, bpm=bpm, octaves=2).cv(bars=bars)
+    audio = gen.at(pitch).render(pitch.duration)
+    return audio * note_env.trigger(gate)
+
+
+def arp_fm(bars=4, bpm=80):
+    """Arpeggiator using FM bells."""
+    pitch, gate = Arpeggiator(_major_chord(), pattern="up", note_duration=0.5, bpm=bpm).cv(bars=bars)
+    mod = Oscillator("sine").at(pitch * 2.0).render(pitch.duration) * (pitch * 8.0)
+    audio = Oscillator("sine").at(pitch + mod).render(pitch.duration)
+    return audio * bell_env.trigger(gate)
+
+
+# ---------------------------------------------------------------------------
+# 11. 303-style acid bass (CV/gate showcase)
+# ---------------------------------------------------------------------------
+
+
+def acid_bass(bpm=130):
+    """TB-303 style: saw + filter envelope + amp envelope via CV/gate."""
+    notes = [
+        Note(Pitch(55), 0.5),
+        Note(Pitch(55), 0.25),
+        Note(Pitch(82.4), 0.25),
+        Note(Pitch(73.4), 0.5),
+        Note.rest(0.25),
+        Note(Pitch(55), 0.25),
+    ]
+    pitch, gate = Sequencer(notes, bpm=bpm).cv(repeats=4)
+    dur = pitch.duration
+
+    audio = Oscillator("saw").at(pitch).render(dur) * 0.5
+    amp = adsr(0.005, 0.1, 0.3, 0.8, 0.05).trigger(gate)
+    cutoff = adsr(0.005, 0.15, 0.0, 0.0, 0.03).trigger(gate) * 5000 + 300
+    output = LowPassFilter(cutoff)(audio) * amp
+
+    return (Overdrive(gain=3.0) | LowPassFilter(4000))(output)
+
+
+# ---------------------------------------------------------------------------
+# 12. Produced pieces
+# ---------------------------------------------------------------------------
+
+
+def ambient_pad(dur=6.0):
+    """Slow stereo pad: detuned saws, plate reverb, panned wide."""
+    env = adsr(0.5, 0.3, dur - 1.5, 0.75, 0.7)
+    sig_l = env.apply(Oscillator("saw").at(220 * 1.003).render(dur)) * 0.3
+    sig_r = env.apply(Oscillator("saw").at(220 * 0.997).render(dur)) * 0.3
+    plate = DatorroReverb(decay=0.85, bandwidth=0.9995, wet=0.5)
+    mx = Mixer()
+    mx.add_track(plate(sig_l), volume=0.8, position=-0.7)
+    mx.add_track(plate(sig_r), volume=0.8, position=+0.7)
+    return mx.render()
+
+
+# ---------------------------------------------------------------------------
+# 13. Wavetable synthesis
+# ---------------------------------------------------------------------------
+
+
+def wt_sweep(hz=220, dur=DUR):
+    """Slow morph from sine through saw to square via LFO-driven position."""
+    wt = Wavetable.from_waveforms(["sine", "saw", "square"])
+    lfo = Oscillator("triangle").at(0.3).render(dur) * 1.0 + 1.0  # sweeps 0→2
+    return wt.at(hz, position=lfo).render(dur) * 0.5
+
+
+def wt_pad(dur=6.0):
+    """Evolving stereo pad: detuned wavetables with slow position drift."""
+    wt = Wavetable.from_waveforms(["sine", "triangle", "saw"])
+    env = adsr(0.4, 0.3, dur - 1.3, 0.8, 0.6)
+    # slow, slightly different position LFOs for left and right
+    pos_l = Oscillator("sine").at(0.08).render(dur) * 0.8 + 1.0
+    pos_r = Oscillator("sine").at(0.11).render(dur) * 0.8 + 1.0
+    sig_l = env.apply(wt.at(220 * 1.003, position=pos_l).render(dur)) * 0.3
+    sig_r = env.apply(wt.at(220 * 0.997, position=pos_r).render(dur)) * 0.3
+    plate = DatorroReverb(decay=0.8, wet=0.45)
+    mx = Mixer()
+    mx.add_track(plate(sig_l), volume=0.8, position=-0.6)
+    mx.add_track(plate(sig_r), volume=0.8, position=+0.6)
+    return mx.render()
+
+
+def wt_bass(bpm=110):
+    """Sequenced bass with filter-envelope-driven wavetable position."""
+    wt = Wavetable.from_waveforms(["triangle", "saw", "square"])
+    notes = [
+        Note(Pitch(55), 0.5),
+        Note(Pitch(55), 0.25),
+        Note(Pitch(82.4), 0.25),
+        Note(Pitch(73.4), 0.5),
+        Note.rest(0.25),
+        Note(Pitch(55), 0.25),
+    ]
+    pitch, gate = Sequencer(notes, bpm=bpm).cv(repeats=4)
+    dur = pitch.duration
+
+    # position follows the filter envelope — brighter on attack
+    pos_env = adsr(0.005, 0.2, 0.0, 0.0, 0.05).trigger(gate) * 2.0
+    audio = wt.at(pitch, position=pos_env).render(dur) * 0.5
+    amp = adsr(0.005, 0.1, 0.3, 0.7, 0.1).trigger(gate)
+    cutoff = adsr(0.005, 0.15, 0.0, 0.0, 0.03).trigger(gate) * 4000 + 300
+
+    return (LowPassFilter(cutoff) | Overdrive(gain=2.0) | LowPassFilter(3500))(audio) * amp
+
+
+def wt_pluck(hz=440):
+    """Wavetable pluck: position decays from bright to mellow."""
+    import numpy as np
+
+    wt = Wavetable.from_waveforms(["square", "saw", "triangle", "sine"])
+    dur = 0.8
+    n = int(dur * SAMPLE_RATE)
+    # fast exponential decay from 0 (square) to 3 (sine)
+    pos = Signal(np.float32(3.0 * (1.0 - np.exp(-np.linspace(0, 8, n)))))
+    return pluck_env.apply(wt.at(hz, position=pos).render(dur))
+
+
+def lead_over_bass(bpm=90):
+    """Lead melody + bass line mixed together."""
+    lead_notes = [Note(ji_major[i], 0.5) for i in [4, 5, 7, 6, 5, 4, 2, 0]]
+    bass_notes = [
+        Note(ji_major[0], 1.0),
+        Note(ji_major[4], 1.0),
+        Note(ji_major[2], 1.0),
+        Note(ji_major[5], 1.0),
+    ]
+    lead_gen = Oscillator("sine") + Oscillator("sine", ratio=2) * 0.2
+    bass_gen = Oscillator("triangle") + Oscillator("triangle", ratio=2) * 0.4
+
+    lead_p, lead_g = Sequencer(lead_notes, bpm=bpm).cv()
+    bass_p, bass_g = Sequencer(bass_notes, bpm=bpm // 2).cv(repeats=2)
+
+    lead_sig = lead_gen.at(lead_p).render(lead_p.duration) * note_env.trigger(lead_g)
+    bass_sig = bass_gen.at(bass_p).render(bass_p.duration) * bass_env.trigger(bass_g)
+
+    bass_fx = (Overdrive(gain=2.0) | LowPassFilter(600))(bass_sig)
+    lead_fx = DatorroReverb(decay=0.4, wet=0.25)(lead_sig)
+
+    mx = Mixer()
+    mx.add_track(lead_fx, volume=0.55, position=0.0)
+    mx.add_track(bass_fx, volume=0.70, position=0.0)
+    return mx.render()
