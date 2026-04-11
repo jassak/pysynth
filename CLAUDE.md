@@ -59,17 +59,30 @@ All inherit `Effect`, all chainable via `|`: `LowPassFilter`, `HighPassFilter`, 
 - **`Note(pitch, duration, velocity)`** — duration in **beats**; `Note.rest(duration)` for silence
 - **`Sequencer(notes, bpm)`** — `.cv(repeats=1) -> (pitch: Signal, gate: Signal)` — produces pitch CV and gate control signals for the entire sequence
 - **`Arpeggiator`** — builds a note sequence from a chord + pattern, delegates to Sequencer
+- **`PolySequencer(events, n_voices, bpm)`** — polyphonic voice-allocated sequencer
+  - Takes piano-roll events: `list[(onset_beat, Note)]`
+  - `.cv() -> list[(pitch: Signal, gate: Signal)]` — one CV/gate pair per voice, all same duration
+  - `.from_chords(chords)` — convenience for block chord progressions
+  - Voice allocation: first-free-voice with most-recently-used preference; steals earliest-ending voice when full
 
 #### CV/gate signal flow
 
 The Sequencer outputs control signals, not audio. Composition happens at the Signal level:
 
 ```python
+# Monophonic
 pitch, gate = Sequencer(notes, bpm=120).cv()
 audio  = Oscillator("saw").at(pitch).render(pitch.duration)
 amp    = adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(gate)
 cutoff = adsr(0.005, 0.2, 0.0, 0.0, 0.05).trigger(gate) * 4000 + 300
 output = LowPassFilter(cutoff)(audio) * amp
+
+# Polyphonic
+voices = PolySequencer.from_chords(chords, n_voices=4, bpm=120).cv()
+audio = sum(
+    Oscillator("saw").at(p).render(p.duration) * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(g)
+    for p, g in voices
+)
 ```
 
 ### Mixing (`src/pysynth/mixing/`)

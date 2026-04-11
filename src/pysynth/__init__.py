@@ -8,5 +8,5 @@ from pysynth.effects import (
     Delay, Echo,
     Tanh, Clip, Overdrive,
 )
-from pysynth.music import Pitch, Note, Scale, Sequencer, Arpeggiator
+from pysynth.music import Pitch, Note, Scale, Sequencer, Arpeggiator, PolySequencer
 from pysynth.mixing import Mixer, pan, play, render_to_wav
