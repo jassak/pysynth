@@ -15,9 +15,8 @@ class Arpeggiator:
     """Generate an arpeggiated sequence from a chord (list of Notes or Pitches).
 
     The Arpeggiator takes a set of pitches and a pattern, builds a Note
-    sequence according to that pattern, then delegates rendering to a
-    Sequencer. Each arpeggiated note has the same duration (``note_duration``
-    in beats).
+    sequence according to that pattern, then delegates to a Sequencer
+    to produce CV/gate control signals.
 
     Parameters
     ----------
@@ -44,11 +43,9 @@ class Arpeggiator:
 
         scale = Scale(220, [1, 5/4, 3/2, 2])
         chord = [Note(scale[i], 0.25) for i in [0, 1, 2, 3]]
-        sig = Arpeggiator(chord, pattern="up", bpm=140).render(
-            Oscillator("triangle"),
-            envelope=adsr(0.005, 0.05, 0.1, 0.5, 0.05),
-            bars=4,
-        )
+        pitch, gate = Arpeggiator(chord, pattern="up", bpm=140).cv(bars=4)
+        audio = Oscillator("triangle").at(pitch).render(pitch.duration)
+        output = audio * adsr(0.005, 0.05, 0.1, 0.5, 0.05).trigger(gate)
     """
 
     def __init__(
@@ -108,17 +105,12 @@ class Arpeggiator:
 
         return sequence[:notes_needed]
 
-    def render(
+    def cv(
         self,
-        generator,
         *,
-        envelope=None,
         bars: int = 1,
         sample_rate: int = SAMPLE_RATE,
-    ) -> Signal:
+    ) -> tuple[Signal, Signal]:
+        """Return ``(pitch, gate)`` control signals for the arpeggiated sequence."""
         sequence = self._build_sequence(bars)
-        return Sequencer(sequence, bpm=self.bpm).render(
-            generator,
-            envelope=envelope,
-            sample_rate=sample_rate,
-        )
+        return Sequencer(sequence, bpm=self.bpm).cv(sample_rate=sample_rate)

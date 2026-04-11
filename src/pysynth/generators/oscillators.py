@@ -4,7 +4,7 @@ from typing import Literal
 
 import numpy as np
 
-from pysynth._core import SAMPLE_RATE, Signal
+from pysynth._core import SAMPLE_RATE, Signal, Generator
 
 
 Waveform = Literal["sine", "square", "saw", "triangle", "pulse"]
@@ -48,116 +48,21 @@ def _render_component(
     return _shape(waveform, phase_arr) * amplitude
 
 
-class _Voice:
-    """A pitched sound awaiting a duration. Private — only produced by ``Oscillator.at(hz)``.
-
-    Holds the oscillator's component list and the bound frequency.
-    ``render(dur)`` performs the actual synthesis loop directly.
-
-    The generator protocol is duck-typed: anything with
-    ``.render(dur, sample_rate) -> Signal`` is a valid voice. Custom generators
-    (FM, etc.) can define their own class without depending on this one.
-    """
-
-    def __init__(
-        self,
-        components: list[tuple[Waveform, float, float, float]],
-        hz: float | Signal,
-    ) -> None:
-        self._components = components
-        self._hz = hz
-
-    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
-        n = int(dur * sample_rate)
-        buf = np.zeros(n, dtype=np.float64)
-        for waveform, ratio, amplitude, phase in self._components:
-            buf += _render_component(waveform, self._hz * ratio, amplitude, phase, n, sample_rate)
-        return Signal(buf.astype(np.float32), sample_rate)
-
-
-class _EnvelopedVoice:
-    """Voice produced by an oscillator with a duck-typed envelope applied. Private."""
-
-    def __init__(self, voice: _Voice, envelope) -> None:
-        self._voice = voice
-        self._envelope = envelope
-
-    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
-        sig = self._voice.render(dur, sample_rate)
-        return self._envelope.apply(sig)
-
-
-class _EnvelopedOscillator:
-    """Generator produced by ``Oscillator * envelope``.
-
-    Satisfies the generator protocol: ``.at(hz) -> voice`` where
-    ``voice.render(dur, sr) -> Signal``.
-
-    The envelope is re-rendered per note at the correct duration via its
-    ``.apply(signal) -> Signal`` method — no pre-rendering required.
-    Any object with ``.apply(signal) -> Signal`` is a valid envelope here.
-    """
-
-    def __init__(self, osc: "Oscillator", envelope) -> None:
-        self._osc = osc
-        self._envelope = envelope
-
-    def at(self, hz: float | Signal) -> _EnvelopedVoice:
-        return _EnvelopedVoice(self._osc.at(hz), self._envelope)
-
-    def __repr__(self) -> str:
-        return f"_EnvelopedOscillator({self._osc!r}, {self._envelope!r})"
-
-
-class _ProductVoice:
-    """Voice produced by two oscillators multiplied together. Private."""
-
-    def __init__(self, a: _Voice, b: _Voice) -> None:
-        self._a = a
-        self._b = b
-
-    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
-        return self._a.render(dur, sample_rate) * self._b.render(dur, sample_rate)
-
-
-class _ProductOscillator:
-    """Oscillator-protocol object representing the pointwise product of two oscillators.
-
-    Satisfies the generator protocol: ``.at(hz) -> voice`` where
-    ``voice.render(dur, sr) -> Signal``.
-    """
-
-    def __init__(self, a: Oscillator, b: Oscillator) -> None:
-        self._a = a
-        self._b = b
-
-    def at(self, hz: float | Signal) -> _ProductVoice:
-        return _ProductVoice(self._a.at(hz), self._b.at(hz))
-
-    def __repr__(self) -> str:
-        return f"_ProductOscillator({self._a!r}, {self._b!r})"
-
-
 class Oscillator:
     """A pitch-free, algebraically composable waveform template.
 
     An Oscillator defines *how* to produce a sound (waveform shape and harmonic
     structure) without committing to an absolute frequency. Frequency is
-    supplied via ``.at(hz)``, which returns a voice ready to render.
+    supplied via ``.at(hz)``, which returns a Generator ready to render.
 
     The second constructor argument, ``ratio``, is a **relative frequency
     multiplier**. ``Oscillator("sine", 2)`` renders at twice the fundamental.
 
-    Oscillators form an algebra under ``+`` and ``*``:
+    Oscillators support additive synthesis and amplitude scaling:
 
-        ``osc * scalar``        — scale the output amplitude (returns new Oscillator)
-        ``scalar * osc``        — same (commutative)
-        ``osc1 + osc2``         — sum the two waveforms (returns new Oscillator)
-        ``osc1 * osc2``         — ring modulation; defers to Signal multiplication
-                                  at render time (returns _ProductOscillator)
-        ``osc * envelope``      — bake an envelope into the generator; envelope must
-                                  implement ``.apply(signal) -> Signal``; re-rendered
-                                  per note at the correct duration (returns _EnvelopedOscillator)
+        ``osc * scalar``   — scale the output amplitude (returns new Oscillator)
+        ``scalar * osc``   — same (commutative)
+        ``osc1 + osc2``    — sum the two waveforms (returns new Oscillator)
 
     These operations compose oscillator *definitions*, not rendered Signals.
     Audio is only produced after calling ``.at(hz).render(dur)``.
@@ -175,12 +80,10 @@ class Oscillator:
         mod = Oscillator("sine").at(110).render(2.0) * 60
         sig = Oscillator("sine").at(220 + mod).render(2.0)
 
-        # Vibrato via Signal arithmetic
-        vibrato = Oscillator("sine").at(5).render(2.0) * 15 + 440
-        sig = Oscillator("sine").at(vibrato).render(2.0)
-
-        # Used in a Sequencer — Sequencer calls generator.at(hz).render(dur)
-        Sequencer(notes, bpm=120).render(Oscillator("sine"), envelope=env)
+        # CV/gate sequencing
+        pitch, gate = Sequencer(notes, bpm=120).cv()
+        audio = Oscillator("saw").at(pitch).render(pitch.duration)
+        output = audio * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(gate)
     """
 
     # Each component: (waveform, ratio, amplitude, phase).
@@ -196,22 +99,16 @@ class Oscillator:
         self._components = [(waveform, float(ratio), 1.0, phase)]
 
     # ------------------------------------------------------------------ #
-    # Algebra — all operators return new Oscillator instances              #
+    # Algebra                                                              #
     # ------------------------------------------------------------------ #
 
-    def __mul__(self, other: "Oscillator | float") -> "Oscillator | _ProductOscillator | _EnvelopedOscillator":
-        if isinstance(other, Oscillator):
-            return _ProductOscillator(self, other)
-        if hasattr(other, "apply"):  # duck-typed envelope: anything with .apply(signal) -> Signal
-            return _EnvelopedOscillator(self, other)
+    def __mul__(self, scalar: float) -> Oscillator:
         result = object.__new__(Oscillator)
-        result._components = [(w, r, a * other, p) for w, r, a, p in self._components]
+        result._components = [(w, r, a * scalar, p) for w, r, a, p in self._components]
         return result
 
-    def __rmul__(self, other: Oscillator | float) -> Oscillator | _ProductOscillator:
-        if isinstance(other, Oscillator):
-            return _ProductOscillator(other, self)
-        return self.__mul__(other)
+    def __rmul__(self, scalar: float) -> Oscillator:
+        return self.__mul__(scalar)
 
     def __add__(self, other: Oscillator) -> Oscillator:
         result = object.__new__(Oscillator)
@@ -222,18 +119,26 @@ class Oscillator:
     # Pitch application                                                    #
     # ------------------------------------------------------------------ #
 
-    def at(self, hz: float | Signal) -> _Voice:
-        """Fix the frequency, returning a voice ready to render.
+    def at(self, hz: float | Signal) -> Generator:
+        """Fix the frequency, returning a Generator ready to render.
 
         Parameters
         ----------
         hz:
             Fundamental frequency in Hz. Each component renders at ``hz * ratio``.
-            Accepts a constant float or a time-varying ``Signal`` (e.g. from an
-            oscillator rendered at a low rate) for vibrato, FM carrier offset,
-            and portamento.
+            Accepts a constant float or a time-varying ``Signal`` (e.g. a pitch
+            CV from a Sequencer, or a modulation signal for vibrato/FM).
         """
-        return _Voice(self._components, hz)
+        components = self._components
+
+        def render(dur: float, sr: int = SAMPLE_RATE) -> Signal:
+            n = int(dur * sr)
+            buf = np.zeros(n, dtype=np.float64)
+            for waveform, ratio, amplitude, phase in components:
+                buf += _render_component(waveform, hz * ratio, amplitude, phase, n, sr)
+            return Signal(buf.astype(np.float32), sr)
+
+        return Generator(render, name=f"{self!r}.at({hz})")
 
     def __repr__(self) -> str:
         if len(self._components) == 1:

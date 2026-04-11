@@ -160,6 +160,29 @@ class _Chain(Effect):
         return f"_Chain({self._a!r}, {self._b!r})"
 
 
+# ------------------------------------------------------------------ #
+# Generator                                                            #
+# ------------------------------------------------------------------ #
+
+
+class Generator:
+    """A signal source awaiting a duration — the universal output of ``.at(hz)``.
+
+    Wraps a ``(dur, sample_rate) -> Signal`` function. Composition happens
+    after ``.render()`` at the Signal level, not on the Generator itself.
+    """
+
+    def __init__(self, fn, *, name: str | None = None) -> None:
+        self._fn = fn
+        self._name = name
+
+    def render(self, dur: float, sample_rate: int = SAMPLE_RATE) -> Signal:
+        return self._fn(dur, sample_rate)
+
+    def __repr__(self) -> str:
+        return f"Generator({self._name})" if self._name else "Generator(...)"
+
+
 def _as_array(param: float | Signal, n: int) -> np.ndarray:
     """Convert a float or Signal control parameter to a float64 array of length n.
 

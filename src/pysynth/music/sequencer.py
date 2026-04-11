@@ -7,71 +7,78 @@ from pysynth.music.pitch import Note
 
 
 class Sequencer:
-    """Render a sequence of Notes to a Signal.
+    """Convert a sequence of Notes into pitch and gate control signals.
 
-    Each Note carries a pitch (Hz) and duration (beats). The Sequencer places
-    them end-to-end in time, converting beat durations to seconds via ``bpm``.
+    Each Note carries a pitch (Hz) and duration (beats). The Sequencer
+    converts beat durations to seconds via ``bpm`` and produces two Signals
+    covering the entire sequence:
 
-    Parameters
-    ----------
-    notes:
-        Ordered list of Notes to play. Use ``Note.rest(duration)`` for silence.
-    bpm:
-        Tempo in beats per minute. Controls the mapping from beat durations to
-        wall-clock seconds. Set to 60 to treat note durations as seconds.
+    - **pitch**: frequency in Hz at each sample (0.0 during rests)
+    - **gate**: note velocity (0.0–1.0) while a note is on, 0.0 otherwise
 
-    The ``generator`` argument to ``render`` must implement the generator
-    protocol: ``generator.at(hz) -> Voice``, where ``Voice`` has
-    ``render(dur) -> Signal``. All ``Oscillator`` instances satisfy this.
+    These Signals drive oscillators, envelopes, and effects via the
+    existing Signal algebra — no need to bake everything into a generator.
 
     Usage::
 
         from pysynth.music import Scale, Note, Sequencer
         from pysynth.generators import Oscillator
         from pysynth.envelopes import adsr
+        from pysynth.effects import LowPassFilter
 
         scale = Scale(220, [1, 5/4, 3/2, 2])
         notes = [Note(scale[i], 0.5) for i in [0, 1, 2, 3, 2, 1, 0]]
-        env = adsr(0.01, 0.05, 0.35, 0.7, 0.08)
 
-        sig = Sequencer(notes, bpm=120).render(Oscillator("sine"), envelope=env)
-        sig.play()
+        pitch, gate = Sequencer(notes, bpm=120).cv()
+        audio  = Oscillator("saw").at(pitch).render(pitch.duration)
+        amp    = adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(gate)
+        cutoff = adsr(0.005, 0.2, 0.0, 0.0, 0.05).trigger(gate) * 3000 + 400
+        output = LowPassFilter(cutoff)(audio) * amp
     """
 
     def __init__(self, notes: list[Note], bpm: float = 120.0) -> None:
         self.notes = notes
         self.bpm = bpm
 
-    def render(
+    def cv(
         self,
-        generator,
         *,
-        envelope=None,
         repeats: int = 1,
         sample_rate: int = SAMPLE_RATE,
-    ) -> Signal:
-        beat_duration = 60.0 / self.bpm  # seconds per beat
+    ) -> tuple[Signal, Signal]:
+        """Return ``(pitch, gate)`` control signals for the entire sequence.
+
+        Parameters
+        ----------
+        repeats:
+            Number of times to repeat the note sequence.
+        sample_rate:
+            Sample rate for the output Signals.
+
+        Returns
+        -------
+        pitch:
+            Signal with frequency in Hz per sample (0.0 during rests).
+        gate:
+            Signal with note velocity (0.0–1.0) while a note sounds,
+            0.0 during rests.
+        """
+        beat_duration = 60.0 / self.bpm
         notes = self.notes * repeats
 
         total_seconds = sum(n.duration * beat_duration for n in notes)
         total_samples = int(total_seconds * sample_rate)
-        buf = np.zeros(total_samples, dtype=np.float32)
+
+        pitch_buf = np.zeros(total_samples, dtype=np.float32)
+        gate_buf = np.zeros(total_samples, dtype=np.float32)
 
         offset = 0
         for note in notes:
-            dur_seconds = note.duration * beat_duration
-            dur_samples = int(dur_seconds * sample_rate)
-
+            dur_samples = int(note.duration * beat_duration * sample_rate)
+            end = min(offset + dur_samples, total_samples)
             if not note.is_rest:
-                note_sig = generator.at(note.pitch.hz).render(dur_seconds, sample_rate)
+                pitch_buf[offset:end] = note.pitch.hz
+                gate_buf[offset:end] = note.velocity
+            offset = end
 
-                if envelope is not None:
-                    note_sig = envelope.apply(note_sig)
-
-                data = (note_sig * note.velocity).data
-                n = min(len(data), total_samples - offset)
-                buf[offset : offset + n] += data[:n]
-
-            offset += dur_samples  # always advance, even for rests
-
-        return Signal(buf, sample_rate)
+        return Signal(pitch_buf, sample_rate), Signal(gate_buf, sample_rate)
