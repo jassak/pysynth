@@ -10,6 +10,31 @@ def _hz_match(target: float, candidates: list[float]) -> bool:
     return any(math.isclose(target, c, rel_tol=1e-9) for c in candidates)
 
 
+def _fold_ratio(r: float, period: float) -> float:
+    """Normalise a ratio into [1, period)."""
+    while r >= period - 1e-12:
+        r /= period
+    while r < 1.0 - 1e-12:
+        r *= period
+    return r
+
+
+def _dedup(hz_list: list[float]) -> list[float]:
+    """Remove near-duplicate Hz values, keeping the first occurrence."""
+    out: list[float] = []
+    for h in hz_list:
+        if not _hz_match(h, out):
+            out.append(h)
+    return out
+
+
+def _fold_hz(hz: float, ref_tonic: float, period: float) -> float:
+    """Fold an absolute Hz value into [ref_tonic, ref_tonic * period)."""
+    r = hz / ref_tonic
+    r = _fold_ratio(r, period)
+    return ref_tonic * r
+
+
 class Scale:
     """A mapping from integer degree indices to Pitch values.
 
@@ -55,6 +80,35 @@ class Scale:
         p = scale[0]    # tonic Pitch
         p = scale[3]    # fourth degree
         for p in scale: # iterate all degrees
+
+    Deriving scales by index::
+
+        chromatic = Scale(440, [2 ** (n / 12) for n in range(12)], period=2.0)
+        major      = chromatic[[0, 2, 4, 5, 7, 9, 11]]
+        whole_tone = chromatic[::2]
+
+    Set operations (compare by absolute Hz, result tonic = lhs).
+    When both scales share the same ``period``, comparison is
+    mod-period (pitch-class aware)::
+
+        diminished  = chromatic[::3] | chromatic[1::3]   # union
+        common      = A_major & C_major                  # intersection
+        accidentals = chromatic - major                   # difference
+
+    Fold ratios into one period (requires ``period``)::
+
+        scale.reduce()               # deduplicate across octaves
+
+    Modes (requires ``period``)::
+
+        dorian    = major.mode(1)
+        phrygian  = major.mode(2)
+        mixolydian = major.mode(4)
+
+    Audition::
+
+        scale.preview()              # play ascending, sine wave, 120 bpm
+        scale.preview(bpm=80)        # slower
     """
 
     def __init__(
@@ -112,34 +166,72 @@ class Scale:
         """Transpose the entire scale down by a ratio."""
         return Scale(self._tonic / ratio, self._ratios, unit="ratio", period=self._period)
 
-    def __or__(self, other: Scale) -> Scale:
-        """Union of two scales by absolute Hz, result tonic = lhs tonic."""
+    def _shared_period(self, other: Scale) -> float | None:
+        if (
+            self._period is not None
+            and other._period is not None
+            and math.isclose(self._period, other._period, rel_tol=1e-9)
+        ):
+            return self._period
+        return None
+
+    def _to_hz(self, other: Scale) -> tuple[list[float], list[float], float | None]:
+        """Compute comparable Hz lists for set operations.
+
+        When both scales share the same period, Hz values are folded into
+        ``[self._tonic, self._tonic * period)`` so that pitch classes match
+        across octaves and tonics.
+        """
+        sp = self._shared_period(other)
         lhs_hz = [self._tonic * r for r in self._ratios]
         rhs_hz = [other._tonic * r for r in other._ratios]
+        if sp is not None:
+            lhs_hz = [_fold_hz(h, self._tonic, sp) for h in lhs_hz]
+            rhs_hz = [_fold_hz(h, self._tonic, sp) for h in rhs_hz]
+            # Deduplicate within each side after folding
+            lhs_hz = _dedup(lhs_hz)
+            rhs_hz = _dedup(rhs_hz)
+        return lhs_hz, rhs_hz, sp
+
+    def __or__(self, other: Scale) -> Scale:
+        """Union of two scales by absolute Hz, result tonic = lhs tonic.
+
+        When both scales share the same period, comparison is mod-period
+        and the result is reduced to one period.
+        """
+        lhs_hz, rhs_hz, sp = self._to_hz(other)
         merged = list(lhs_hz)
         for h in rhs_hz:
             if not _hz_match(h, merged):
                 merged.append(h)
         ratios = sorted(h / self._tonic for h in merged)
-        return Scale(self._tonic, ratios, unit="ratio")
+        return Scale(self._tonic, ratios, unit="ratio", period=sp)
 
     def __and__(self, other: Scale) -> Scale:
-        """Intersection of two scales by absolute Hz, result tonic = lhs tonic."""
-        rhs_hz = [other._tonic * r for r in other._ratios]
-        common = [self._tonic * r for r in self._ratios if _hz_match(self._tonic * r, rhs_hz)]
+        """Intersection of two scales by absolute Hz, result tonic = lhs tonic.
+
+        When both scales share the same period, comparison is mod-period
+        and the result is reduced to one period.
+        """
+        lhs_hz, rhs_hz, sp = self._to_hz(other)
+        common = [h for h in lhs_hz if _hz_match(h, rhs_hz)]
         if not common:
             raise ValueError("empty scale")
         ratios = sorted(h / self._tonic for h in common)
-        return Scale(self._tonic, ratios, unit="ratio")
+        return Scale(self._tonic, ratios, unit="ratio", period=sp)
 
     def __sub__(self, other: Scale) -> Scale:
-        """Difference of two scales by absolute Hz, result tonic = lhs tonic."""
-        rhs_hz = [other._tonic * r for r in other._ratios]
-        diff = [self._tonic * r for r in self._ratios if not _hz_match(self._tonic * r, rhs_hz)]
+        """Difference of two scales by absolute Hz, result tonic = lhs tonic.
+
+        When both scales share the same period, comparison is mod-period
+        and the result is reduced to one period.
+        """
+        lhs_hz, rhs_hz, sp = self._to_hz(other)
+        diff = [h for h in lhs_hz if not _hz_match(h, rhs_hz)]
         if not diff:
             raise ValueError("empty scale")
         ratios = sorted(h / self._tonic for h in diff)
-        return Scale(self._tonic, ratios, unit="ratio")
+        return Scale(self._tonic, ratios, unit="ratio", period=sp)
 
     def mode(self, degree: int) -> Scale:
         """Rotate the scale so that *degree* becomes the new tonic.
@@ -156,6 +248,23 @@ class Scale:
             self._ratios[(degree + i) % n] * (self._period if (degree + i) >= n else 1.0) / base for i in range(n)
         ]
         return Scale(self._tonic * base, ratios, unit="ratio", period=self._period)
+
+    def reduce(self) -> Scale:
+        """Fold all ratios into one period and deduplicate.
+
+        Requires ``period`` to be set. Each ratio is normalised into
+        ``[1, period)`` and duplicates (within float tolerance) are removed.
+        The result is sorted ascending with the same tonic and period.
+        """
+        if self._period is None:
+            raise ValueError("reduce() requires a scale with a period")
+        folded: list[float] = []
+        for r in self._ratios:
+            f = _fold_ratio(r, self._period)
+            if not any(math.isclose(f, x, rel_tol=1e-9) for x in folded):
+                folded.append(f)
+        folded.sort()
+        return Scale(self._tonic, folded, unit="ratio", period=self._period)
 
     def preview(self, bpm: float = 120.0, blocking: bool = True) -> None:
         """Play the scale degrees ascending through the default audio device."""

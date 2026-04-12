@@ -242,12 +242,24 @@ class TestScaleSetOps:
         hz_values = [result[i].hz for i in range(len(result))]
         assert hz_values == sorted(hz_values)
 
-    def test_set_ops_no_period(self):
+    def test_set_ops_shared_period(self):
         a = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
         b = Scale(440, [1, 3 / 2], period=2.0)
+        assert (a | b).period == 2.0
+        assert (a & b).period == 2.0
+        assert (a - b).period == 2.0
+
+    def test_set_ops_no_period(self):
+        a = Scale(440, [1, 5 / 4, 3 / 2])
+        b = Scale(440, [1, 3 / 2])
         assert (a | b).period is None
         assert (a & b).period is None
         assert (a - b).period is None
+
+    def test_set_ops_mismatched_period(self):
+        a = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
+        b = Scale(440, [1, 3 / 2], period=3.0)
+        assert (a | b).period is None
 
 
 class TestModes:
@@ -331,3 +343,68 @@ class TestModes:
         assert dorian[0].hz == pytest.approx(440 * 9 / 8)
         # Second degree of dorian = third degree of parent / dorian tonic
         assert dorian[1].hz == pytest.approx(440 * 5 / 4)
+
+
+class TestReduce:
+    def test_basic_fold(self):
+        # Scale with ratios spanning two octaves
+        s = Scale(440, [1, 5 / 4, 3 / 2, 2, 5 / 2, 3], period=2.0)
+        r = s.reduce()
+        assert len(r) == 3  # 1, 5/4, 3/2 (2->1, 5/2->5/4, 3->3/2)
+        assert r[0].hz == pytest.approx(440.0)
+        assert r[1].hz == pytest.approx(440 * 5 / 4)
+        assert r[2].hz == pytest.approx(440 * 3 / 2)
+
+    def test_reduce_preserves_period(self):
+        s = Scale(440, [1, 2, 4], period=2.0)
+        assert s.reduce().period == 2.0
+
+    def test_reduce_idempotent(self):
+        s = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
+        assert len(s.reduce()) == len(s.reduce().reduce())
+
+    def test_reduce_no_period_raises(self):
+        with pytest.raises(ValueError, match="period"):
+            Scale(440, [1, 2]).reduce()
+
+    def test_reduce_tritave(self):
+        s = Scale(440, [1, 1.5, 3, 4.5], period=3.0)
+        r = s.reduce()
+        assert len(r) == 2  # 1 and 1.5 (3->1, 4.5->1.5)
+
+    def test_reduce_sub_unity_ratios(self):
+        # Ratio below 1 should fold up
+        s = Scale(440, [0.5, 1, 3 / 2], period=2.0)
+        r = s.reduce()
+        assert len(r) == 2  # 0.5->1, 1, 3/2 => dedup 1, keep 3/2
+        assert r[0].hz == pytest.approx(440.0)
+        assert r[1].hz == pytest.approx(440 * 3 / 2)
+
+
+class TestPeriodAwareSetOps:
+    chromatic = Scale(440, [2 ** (n / 12) for n in range(12)], period=2.0)
+
+    def test_cross_tonic_intersection_with_period(self):
+        # C major and G major in 12-TET share several pitch classes
+        C = 440 * 2 ** (-9 / 12)  # exact 12-TET C4
+        G = 440 * 2 ** (-2 / 12)  # exact 12-TET G4
+        c_major = Scale(C, [2 ** (n / 12) for n in [0, 2, 4, 5, 7, 9, 11]], period=2.0)
+        g_major = Scale(G, [2 ** (n / 12) for n in [0, 2, 4, 5, 7, 9, 11]], period=2.0)
+        common = c_major & g_major
+        # They share all notes except F vs F#: C D E G A B = 6 notes
+        assert len(common) == 6
+
+    def test_union_dedup_across_octaves(self):
+        a = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
+        b = Scale(880, [1, 5 / 4, 3 / 2], period=2.0)  # same pitches, octave up
+        result = a | b
+        assert len(result) == 3  # all fold to same pitch classes
+
+    def test_difference_across_octaves(self):
+        full = Scale(440, [1, 5 / 4, 3 / 2, 2, 5 / 2], period=2.0)
+        sub = Scale(440, [1, 3 / 2], period=2.0)
+        diff = full - sub
+        # 1 and 2 fold together, 3/2 and 5/2 fold to 3/2 and 5/4
+        # After folding full: {1, 5/4, 3/2}, sub: {1, 3/2} => diff: {5/4}
+        assert len(diff) == 1
+        assert diff[0].hz == pytest.approx(440 * 5 / 4)
