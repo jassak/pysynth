@@ -181,11 +181,6 @@ class TestSmartIndexing:
         with pytest.raises(IndexError):
             self.eq_temp[[0, 99]]
 
-    def test_derived_scale_has_no_period(self):
-        s = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
-        sub = s[[0, 2]]
-        assert sub.period is None
-
     def test_tonic_preserved(self):
         sub = self.eq_temp[[3, 7]]
         assert sub.tonic.hz == pytest.approx(440.0)

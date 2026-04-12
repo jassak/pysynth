@@ -96,7 +96,7 @@ class Scale:
             ratios = [self._ratios[i] for i in key]
         if not ratios:
             raise ValueError("empty scale")
-        return Scale(self._tonic, ratios, unit="ratio")
+        return Scale(self._tonic, ratios, unit="ratio", period=self._period)
 
     def __len__(self) -> int:
         return len(self._ratios)
