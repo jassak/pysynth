@@ -149,6 +149,25 @@ class Scale:
         ratios = sorted(h / self._tonic for h in diff)
         return Scale(self._tonic, ratios, unit="ratio")
 
+    def mode(self, degree: int) -> Scale:
+        """Rotate the scale so that *degree* becomes the new tonic.
+
+        Requires ``period`` to be set — without it, the wrapped-around
+        degrees below the rotation point have no defined frequency.
+        """
+        if self._period is None:
+            raise ValueError("mode() requires a scale with a period")
+        n = len(self._ratios)
+        degree = degree % n
+        base = self._ratios[degree]
+        ratios = [
+            self._ratios[(degree + i) % n]
+            * (self._period if (degree + i) >= n else 1.0)
+            / base
+            for i in range(n)
+        ]
+        return Scale(self._tonic * base, ratios, unit="ratio", period=self._period)
+
     def __repr__(self) -> str:
         if self._period is not None:
             return f"Scale(tonic={self._tonic:.4g} Hz, degrees={len(self)}, period={self._period})"

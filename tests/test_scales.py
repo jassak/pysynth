@@ -253,3 +253,86 @@ class TestScaleSetOps:
         assert (a | b).period is None
         assert (a & b).period is None
         assert (a - b).period is None
+
+
+class TestModes:
+    # 12-TET major scale with period
+    major = Scale(440, [2 ** (n / 12) for n in [0, 2, 4, 5, 7, 9, 11]], period=2.0)
+
+    def test_ionian_is_identity(self):
+        ionian = self.major.mode(0)
+        assert ionian.tonic.hz == pytest.approx(440.0)
+        for i in range(len(self.major)):
+            assert ionian[i].hz == pytest.approx(self.major[i].hz)
+
+    def test_dorian_tonic(self):
+        dorian = self.major.mode(1)
+        assert dorian.tonic.hz == pytest.approx(self.major[1].hz)
+
+    def test_dorian_degree_count(self):
+        dorian = self.major.mode(1)
+        assert len(dorian) == len(self.major)
+
+    def test_dorian_ratios_start_at_one(self):
+        dorian = self.major.mode(1)
+        assert dorian[0].hz == pytest.approx(dorian.tonic.hz)
+
+    def test_dorian_spans_one_period(self):
+        dorian = self.major.mode(1)
+        assert dorian[len(dorian) - 1].hz < dorian.tonic.hz * 2.0
+        # Next period wraps correctly
+        assert dorian[len(dorian)].hz == pytest.approx(dorian.tonic.hz * 2.0)
+
+    def test_all_seven_modes_share_pitch_classes(self):
+        """All modes of the same scale contain the same pitch classes mod period."""
+        def pitch_classes(scale):
+            return sorted(scale[i].hz / scale.tonic.hz for i in range(len(scale)))
+
+        base_pcs = pitch_classes(self.major)
+        for m in range(7):
+            mode = self.major.mode(m)
+            mode_pcs = pitch_classes(mode)
+            # Fold into same period and compare as sets
+            base_abs = sorted(self.major.tonic.hz * r for r in base_pcs)
+            mode_abs = sorted(mode.tonic.hz * r for r in mode_pcs)
+            # Normalize all into the base octave [tonic, tonic*period)
+            def fold(hz, tonic, period):
+                while hz >= tonic * period - 1e-9:
+                    hz /= period
+                while hz < tonic - 1e-9:
+                    hz *= period
+                return hz
+            base_folded = sorted(fold(h, self.major.tonic.hz, 2.0) for h in base_abs)
+            mode_folded = sorted(fold(h, self.major.tonic.hz, 2.0) for h in mode_abs)
+            assert len(base_folded) == len(mode_folded)
+            for a, b in zip(base_folded, mode_folded):
+                assert a == pytest.approx(b)
+
+    def test_mode_preserves_period(self):
+        dorian = self.major.mode(1)
+        assert dorian.period == 2.0
+
+    def test_mode_extrapolation(self):
+        dorian = self.major.mode(1)
+        assert dorian[7].hz == pytest.approx(dorian[0].hz * 2.0)
+        assert dorian[14].hz == pytest.approx(dorian[0].hz * 4.0)
+
+    def test_negative_degree_wraps(self):
+        # mode(-1) == mode(6) for a 7-degree scale
+        m1 = self.major.mode(-1)
+        m2 = self.major.mode(6)
+        for i in range(7):
+            assert m1[i].hz == pytest.approx(m2[i].hz)
+
+    def test_no_period_raises(self):
+        s = Scale(440, [1, 5 / 4, 3 / 2])
+        with pytest.raises(ValueError, match="period"):
+            s.mode(1)
+
+    def test_just_intonation_modes(self):
+        ji = Scale(440, [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8], period=2.0)
+        dorian = ji.mode(1)
+        assert dorian.tonic.hz == pytest.approx(440 * 9 / 8)
+        assert dorian[0].hz == pytest.approx(440 * 9 / 8)
+        # Second degree of dorian = third degree of parent / dorian tonic
+        assert dorian[1].hz == pytest.approx(440 * 5 / 4)
