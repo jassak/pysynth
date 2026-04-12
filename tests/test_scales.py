@@ -138,3 +138,118 @@ class TestScaleExtrapolation:
         s = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
         pitches = list(s)
         assert len(pitches) == 3
+
+
+class TestSmartIndexing:
+    eq_temp = Scale(440, [2 ** (n / 12) for n in range(12)])
+
+    def test_list_index_major(self):
+        major = self.eq_temp[[0, 2, 4, 5, 7, 9, 11]]
+        assert len(major) == 7
+        assert major[0].hz == pytest.approx(440.0)
+        assert major[1].hz == pytest.approx(440 * 2 ** (2 / 12))
+
+    def test_slice_whole_tone(self):
+        whole_tone = self.eq_temp[::2]
+        assert len(whole_tone) == 6
+        assert whole_tone[0].hz == pytest.approx(440.0)
+        assert whole_tone[1].hz == pytest.approx(440 * 2 ** (2 / 12))
+
+    def test_slice_returns_scale(self):
+        sub = self.eq_temp[:3]
+        assert isinstance(sub, Scale)
+        assert len(sub) == 3
+
+    def test_list_returns_scale(self):
+        sub = self.eq_temp[[0, 4, 7]]
+        assert isinstance(sub, Scale)
+        assert len(sub) == 3
+
+    def test_int_still_returns_pitch(self):
+        p = self.eq_temp[0]
+        assert isinstance(p, Pitch)
+
+    def test_empty_list_raises(self):
+        with pytest.raises(ValueError, match="empty scale"):
+            self.eq_temp[[]]
+
+    def test_empty_slice_raises(self):
+        with pytest.raises(ValueError, match="empty scale"):
+            self.eq_temp[10:10]
+
+    def test_list_index_out_of_range(self):
+        with pytest.raises(IndexError):
+            self.eq_temp[[0, 99]]
+
+    def test_derived_scale_has_no_period(self):
+        s = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
+        sub = s[[0, 2]]
+        assert sub.period is None
+
+    def test_tonic_preserved(self):
+        sub = self.eq_temp[[3, 7]]
+        assert sub.tonic.hz == pytest.approx(440.0)
+
+
+class TestScaleSetOps:
+    eq_temp = Scale(440, [2 ** (n / 12) for n in range(12)])
+
+    def test_union_diminished(self):
+        dim = self.eq_temp[::3] | self.eq_temp[1::3]
+        assert len(dim) == 8
+
+    def test_union_dedup(self):
+        s = self.eq_temp[:6]
+        result = s | s
+        assert len(result) == len(s)
+
+    def test_union_tonic_is_lhs(self):
+        a = Scale(440, [1, 5 / 4, 3 / 2])
+        b = Scale(330, [1, 5 / 4, 3 / 2])
+        result = a | b
+        assert result.tonic.hz == pytest.approx(440.0)
+
+    def test_intersection_same_tonic(self):
+        major = self.eq_temp[[0, 2, 4, 5, 7, 9, 11]]
+        penta = self.eq_temp[[0, 2, 4, 7, 9]]
+        common = major & penta
+        assert len(common) == 5
+
+    def test_intersection_cross_tonic(self):
+        a_major = Scale(440, [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8])
+        # Scale rooted a fifth up, sharing some absolute Hz
+        e_scale = Scale(660, [1, 4 / 3])  # 660 Hz and 880 Hz
+        common = a_major & e_scale
+        # 660 = 440 * 3/2 and 880 = 440 * 2 — but 2 not in a_major ratios
+        assert any(pytest.approx(p.hz) == 660.0 for p in common)
+
+    def test_intersection_empty_raises(self):
+        a = Scale(440, [1])
+        b = Scale(100, [1])
+        with pytest.raises(ValueError, match="empty scale"):
+            a & b
+
+    def test_difference(self):
+        chromatic = self.eq_temp
+        major = self.eq_temp[[0, 2, 4, 5, 7, 9, 11]]
+        accidentals = chromatic - major
+        assert len(accidentals) == 5
+
+    def test_difference_empty_raises(self):
+        s = Scale(440, [1, 2])
+        with pytest.raises(ValueError, match="empty scale"):
+            s - s
+
+    def test_union_sorted(self):
+        a = self.eq_temp[[7, 9, 11]]
+        b = self.eq_temp[[0, 2, 4]]
+        result = a | b
+        hz_values = [result[i].hz for i in range(len(result))]
+        assert hz_values == sorted(hz_values)
+
+    def test_set_ops_no_period(self):
+        a = Scale(440, [1, 5 / 4, 3 / 2], period=2.0)
+        b = Scale(440, [1, 3 / 2], period=2.0)
+        assert (a | b).period is None
+        assert (a & b).period is None
+        assert (a - b).period is None
