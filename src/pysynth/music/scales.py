@@ -57,9 +57,14 @@ class Scale:
         tonic: float | Pitch,
         intervals: list[float],
         unit: Literal["ratio", "cents"] = "ratio",
+        period: float | None = None,
     ) -> None:
         self._tonic = tonic.hz if isinstance(tonic, Pitch) else float(tonic)
         self._unit = unit
+
+        if period is not None and period <= 0:
+            raise ValueError(f"period must be positive, got {period}")
+        self._period = period
 
         if unit == "cents":
             self._ratios = [2.0 ** (c / 1200.0) for c in intervals]
@@ -70,8 +75,15 @@ class Scale:
     def tonic(self) -> Pitch:
         return Pitch(self._tonic)
 
+    @property
+    def period(self) -> float | None:
+        return self._period
+
     def __getitem__(self, n: int) -> Pitch:
-        return Pitch(self._tonic * self._ratios[n])
+        if self._period is None:
+            return Pitch(self._tonic * self._ratios[n])
+        wrap, degree = divmod(n, len(self._ratios))
+        return Pitch(self._tonic * self._ratios[degree] * self._period**wrap)
 
     def __len__(self) -> int:
         return len(self._ratios)
@@ -81,11 +93,13 @@ class Scale:
 
     def __mul__(self, ratio: float) -> Scale:
         """Transpose the entire scale up by a ratio."""
-        return Scale(self._tonic * ratio, self._ratios, unit="ratio")
+        return Scale(self._tonic * ratio, self._ratios, unit="ratio", period=self._period)
 
     def __truediv__(self, ratio: float) -> Scale:
         """Transpose the entire scale down by a ratio."""
-        return Scale(self._tonic / ratio, self._ratios, unit="ratio")
+        return Scale(self._tonic / ratio, self._ratios, unit="ratio", period=self._period)
 
     def __repr__(self) -> str:
+        if self._period is not None:
+            return f"Scale(tonic={self._tonic:.4g} Hz, degrees={len(self)}, period={self._period})"
         return f"Scale(tonic={self._tonic:.4g} Hz, degrees={len(self)})"
