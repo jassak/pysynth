@@ -40,6 +40,8 @@ from pysynth import (
     Note,
     Scale,
     Sequencer,
+    Step,
+    StepSequencer,
     Arpeggiator,
     Mixer,
     pan,
@@ -399,6 +401,77 @@ def acid_bass(bpm=130):
     output = LowPassFilter(cutoff)(audio) * amp
 
     return (Overdrive(gain=3.0) | LowPassFilter(4000))(output)
+
+
+def acid_303(bpm=138):
+    """TB-303 acid line built with StepSequencer — separate lanes for
+    pitch, filter cutoff, and accent drive modular-synth style.
+
+    16 steps of classic acid: slides, ties, rests, per-step filter and
+    accent control all wired together via Signal algebra."""
+    A1, C2, D2, E2, G1 = 55.0, 65.4, 73.4, 82.4, 49.0
+
+    # -- Pitch lane: note pattern with slides, ties, and rests ----------
+    pitch_steps = [
+        Step(A1),                             # 1
+        Step(A1, gate_length=0.5),            # 2  staccato
+        Step(C2, slide=True),                 # 3  slide up
+        Step.tie(),                           # 4  hold C2
+        Step(D2),                             # 5
+        Step.rest(),                          # 6  silence
+        Step(A1, gate_length=0.9),            # 7  long gate
+        Step(E2, slide=True),                 # 8  slide up
+        Step(D2, slide=True),                 # 9  slide back down
+        Step(D2, gate_length=0.4),            # 10 staccato
+        Step.rest(),                          # 11
+        Step(A1),                             # 12
+        Step(G1, slide=True),                 # 13 slide to sub
+        Step.tie(),                           # 14 hold G1
+        Step(A1, slide=True),                 # 15 slide back up
+        Step(A1, gate_length=0.3),            # 16 short blip
+    ]
+    pitch, gate = StepSequencer(
+        pitch_steps, bpm=bpm, step_length=0.25, slide_time=0.03
+    ).cv(repeats=4)
+    dur = pitch.duration
+
+    # -- Cutoff lane: per-step filter brightness -------------------------
+    lo, hi = 400.0, 4500.0
+    cutoff_steps = [
+        Step(hi),  Step(lo),  Step(hi),  Step(hi),
+        Step(hi),  Step(lo),  Step(lo),  Step(hi),
+        Step(hi),  Step(lo),  Step(lo),  Step(hi),
+        Step(hi),  Step(hi),  Step(hi, slide=True),  Step(lo),
+    ]
+    cutoff_base, _ = StepSequencer(
+        cutoff_steps, bpm=bpm, step_length=0.25, slide_time=0.015
+    ).cv(repeats=4)
+
+    # -- Accent lane: drive amount per step ------------------------------
+    soft, hard = 0.5, 1.0
+    accent_steps = [
+        Step(hard), Step(soft), Step(hard), Step(soft),
+        Step(hard), Step(soft), Step(soft), Step(hard),
+        Step(hard), Step(soft), Step(soft), Step(soft),
+        Step(hard), Step(soft), Step(hard), Step(soft),
+    ]
+    accent, _ = StepSequencer(
+        accent_steps, bpm=bpm, step_length=0.25
+    ).cv(repeats=4)
+
+    # -- Synthesis -------------------------------------------------------
+    audio = Oscillator("saw").at(pitch).render(dur) * 0.5
+
+    # Filter envelope opens on each gate, scaled by the cutoff lane
+    filt_env = adsr(0.003, 0.12, 0.0, 0.0, 0.02).trigger(gate)
+    cutoff = filt_env * cutoff_base + 250
+
+    amp = adsr(0.003, 0.08, 0.25, 0.7, 0.04).trigger(gate)
+    filtered = LowPassFilter(cutoff)(audio) * amp
+
+    # Accent lane drives a tanh saturator — louder steps get more grit
+    output = Tanh(drive=accent)(filtered)
+    return (LowPassFilter(5500) | Echo(delay_time=0.375, repeats=3, decay=0.35, wet=0.2))(output)
 
 
 # ---------------------------------------------------------------------------
