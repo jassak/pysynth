@@ -126,11 +126,7 @@ class Scale:
     def __and__(self, other: Scale) -> Scale:
         """Intersection of two scales by absolute Hz, result tonic = lhs tonic."""
         rhs_hz = [other._tonic * r for r in other._ratios]
-        common = [
-            self._tonic * r
-            for r in self._ratios
-            if _hz_match(self._tonic * r, rhs_hz)
-        ]
+        common = [self._tonic * r for r in self._ratios if _hz_match(self._tonic * r, rhs_hz)]
         if not common:
             raise ValueError("empty scale")
         ratios = sorted(h / self._tonic for h in common)
@@ -139,11 +135,7 @@ class Scale:
     def __sub__(self, other: Scale) -> Scale:
         """Difference of two scales by absolute Hz, result tonic = lhs tonic."""
         rhs_hz = [other._tonic * r for r in other._ratios]
-        diff = [
-            self._tonic * r
-            for r in self._ratios
-            if not _hz_match(self._tonic * r, rhs_hz)
-        ]
+        diff = [self._tonic * r for r in self._ratios if not _hz_match(self._tonic * r, rhs_hz)]
         if not diff:
             raise ValueError("empty scale")
         ratios = sorted(h / self._tonic for h in diff)
@@ -161,12 +153,22 @@ class Scale:
         degree = degree % n
         base = self._ratios[degree]
         ratios = [
-            self._ratios[(degree + i) % n]
-            * (self._period if (degree + i) >= n else 1.0)
-            / base
-            for i in range(n)
+            self._ratios[(degree + i) % n] * (self._period if (degree + i) >= n else 1.0) / base for i in range(n)
         ]
         return Scale(self._tonic * base, ratios, unit="ratio", period=self._period)
+
+    def preview(self, bpm: float = 120.0, blocking: bool = True) -> None:
+        """Play the scale degrees ascending through the default audio device."""
+        from pysynth.envelopes import adsr
+        from pysynth.generators import Oscillator
+        from pysynth.music.pitch import Note
+        from pysynth.music.sequencer import Sequencer
+
+        notes = [Note(self[i], 0.5) for i in range(len(self))]
+        pitch, gate = Sequencer(notes, bpm=bpm).cv()
+        audio = Oscillator("sine").at(pitch).render(pitch.duration)
+        env = adsr(0.01, 0.05, 0.0, 0.8, 0.1).trigger(gate)
+        (audio * env * 0.5).play(blocking=blocking)
 
     def __repr__(self) -> str:
         if self._period is not None:
