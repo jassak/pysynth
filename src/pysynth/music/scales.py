@@ -266,6 +266,111 @@ class Scale:
         folded.sort()
         return Scale(self._tonic, folded, unit="ratio", period=self._period)
 
+    def plot(self, show: bool = True):
+        """Visualise the scale.
+
+        Non-periodic scales are drawn as a log-frequency line with each
+        degree marked and labelled. Periodic scales are drawn as a circle
+        (clock-face style) where angular position reflects the log-ratio
+        within one period — identical to how a chromatic circle works for
+        12-TET but generalised to any period and any set of intervals.
+
+        Parameters
+        ----------
+        show:
+            Call ``plt.show()`` after drawing (default True). Pass
+            ``False`` to get the ``Figure`` back for further customisation
+            or saving.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        pitches = list(self)
+        hz_vals = [p.hz for p in pitches]
+
+        if self._period is None:
+            # ── Line plot (linear / non-periodic) ──────────────────────────
+            fig, ax = plt.subplots(figsize=(max(6, len(pitches) * 0.8), 3))
+            ax.set_xscale("log")
+
+            ax.plot(hz_vals, [0.0] * len(hz_vals), color="steelblue",
+                    linewidth=1.2, zorder=2)
+            ax.scatter(hz_vals, [0.0] * len(hz_vals), s=70,
+                       color="steelblue", zorder=3)
+
+            for i, hz in enumerate(hz_vals):
+                ax.annotate(
+                    f"{i}\n{hz:.1f} Hz",
+                    xy=(hz, 0.0),
+                    ha="center", va="bottom",
+                    xytext=(0, 14), textcoords="offset points",
+                    fontsize=9,
+                )
+
+            ax.set_yticks([])
+            ax.set_xlabel("Frequency (Hz, log scale)")
+            ax.set_title(repr(self))
+            for spine in ("left", "top", "right"):
+                ax.spines[spine].set_visible(False)
+        else:
+            # ── Circle plot (periodic) ──────────────────────────────────────
+            # Fold each degree's Hz into [tonic, tonic*period) so that pitch
+            # classes from different octaves land at the same angle.
+            def _angle(hz: float) -> float:
+                r = _fold_ratio(hz / self._tonic, self._period)
+                return 2.0 * math.pi * math.log(r) / math.log(self._period)
+
+            angles = [_angle(hz) for hz in hz_vals]
+            # 12-o'clock = tonic, clockwise → sin/cos with angle measured
+            # from the top: x = sin(a), y = cos(a)
+            xs = [math.sin(a) for a in angles]
+            ys = [math.cos(a) for a in angles]
+
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.set_aspect("equal")
+
+            # Outer circle
+            theta = np.linspace(0.0, 2.0 * math.pi, 300)
+            ax.plot(np.sin(theta), np.cos(theta),
+                    color="lightgray", linewidth=1.5, zorder=1)
+
+            # Spokes from centre to each degree
+            for x, y in zip(xs, ys):
+                ax.plot([0.0, x], [0.0, y],
+                        color="lightsteelblue", linewidth=0.8, zorder=1)
+
+            # Degree points
+            ax.scatter(xs, ys, s=80, color="steelblue", zorder=3)
+
+            # Labels just outside the circle
+            label_r = 1.28
+            for i, (a, hz) in enumerate(zip(angles, hz_vals)):
+                lx = label_r * math.sin(a)
+                ly = label_r * math.cos(a)
+                ax.annotate(
+                    f"{i}\n{hz:.1f} Hz",
+                    xy=(lx, ly),
+                    ha="center", va="center",
+                    fontsize=9,
+                )
+
+            # Centre dot
+            ax.scatter([0.0], [0.0], s=20, color="gray", zorder=2)
+
+            ax.set_xlim(-1.6, 1.6)
+            ax.set_ylim(-1.6, 1.6)
+            ax.axis("off")
+            ax.set_title(repr(self), pad=12)
+
+        fig.tight_layout()
+        if show:
+            plt.show()
+        return fig
+
     def preview(self, bpm: float = 120.0, blocking: bool = True) -> None:
         """Play the scale degrees ascending through the default audio device."""
         from pysynth.envelopes import adsr
