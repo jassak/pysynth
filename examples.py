@@ -43,6 +43,17 @@ from pysynth import (
     Arpeggiator,
     Mixer,
     pan,
+    stft,
+    freeze,
+    smear,
+    shift_bins,
+    cross_synthesize,
+    pitch_shift,
+    SpectralFreeze,
+    SpectralSmear,
+    PitchShift,
+    Vocoder,
+    ConvolutionReverb,
 )
 
 DUR = 3.0
@@ -495,3 +506,149 @@ def lead_over_bass(bpm=90):
     mx.add_track(lead_fx, volume=0.55, position=0.0)
     mx.add_track(bass_fx, volume=0.70, position=0.0)
     return mx.render()
+
+
+# ---------------------------------------------------------------------------
+# 14. Spectral processing
+# ---------------------------------------------------------------------------
+
+
+def frozen_bell():
+    """FM bell frozen at the attack transient — infinite sustain drone."""
+    sig = bell(523, dur=2.0)
+    return SpectralFreeze(freeze_time=0.02)(sig)
+
+
+def smeared_pad(dur=5.0):
+    """Saw pad with heavy spectral smear — blurs harmonics into a wash."""
+    env = adsr(0.3, 0.2, dur - 1.0, 0.8, 0.5)
+    sig = env.apply(Oscillator("saw").at(220).render(dur)) * 0.3
+    return SpectralSmear(amount=12.0)(sig)
+
+
+def pitch_shifted_melody():
+    """Pentatonic melody harmonised a fifth up via spectral pitch shift."""
+    notes = [Note(pentatonic[i], 0.5) for i in [0, 2, 4, 3, 1, 0]]
+    pitch, gate = Sequencer(notes, bpm=100).cv(repeats=2)
+    audio = Oscillator("sine").at(pitch).render(pitch.duration)
+    dry = audio * note_env.trigger(gate)
+    shifted = PitchShift(semitones=7)(dry)
+    return dry * 0.6 + shifted * 0.4
+
+
+def robot_voice():
+    """Vocoder: white noise carrier shaped by a synthetic 'voice' modulator."""
+    dur = 2.0
+    # Modulator — a buzzy low tone that mimics vocal formants
+    mod_env = adsr(0.05, 0.1, dur - 0.5, 0.7, 0.3)
+    modulator = mod_env.apply(Oscillator("saw").at(120).render(dur))
+    # Carrier — noise, which the vocoder reshapes
+    carrier = WhiteNoise().render(dur)
+    return Vocoder(modulator, n_fft=1024, mix=0.9)(carrier) * 0.3
+
+
+def spectral_freeze_pad(dur=6.0):
+    """Evolving pad frozen mid-morph, then reverbed for ambience."""
+    wt = Wavetable.from_waveforms(["sine", "saw", "square"])
+    # Render a morphing wavetable, then freeze it mid-sweep
+    pos = Oscillator("triangle").at(0.5).render(2.0) * 1.0 + 1.0
+    source = wt.at(220, position=pos).render(2.0) * 0.4
+    spec = stft(source, n_fft=2048)
+    # Freeze the frame where the morph is between saw and square
+    frozen = freeze(spec, frame=spec.n_frames * 3 // 4)
+    sig = frozen.to_signal()
+    return DatorroReverb(decay=0.9, wet=0.55)(sig)
+
+
+def spectral_chord():
+    """Three frozen tones mixed in the frequency domain."""
+    tones = [
+        Oscillator("saw").at(ji_major[0].hz).render(1.0),
+        Oscillator("saw").at(ji_major[2].hz).render(1.0),
+        Oscillator("saw").at(ji_major[4].hz).render(1.0),
+    ]
+    specs = [stft(t, n_fft=2048) for t in tones]
+    frozen = [freeze(s, frame=s.n_frames // 2) for s in specs]
+    combined = frozen[0] * 0.33 + frozen[1] * 0.33 + frozen[2] * 0.33
+    return combined.to_signal()
+
+
+def bin_shift_riser(dur=4.0):
+    """Noise swept upward through the spectrum — a tension riser."""
+    sig = PinkNoise().render(dur) * 0.4
+    spec = stft(sig, n_fft=2048)
+    # Shift bins progressively higher across frames
+    import numpy as np
+    shifts = np.linspace(0, 80, spec.n_frames)
+    new_frames = np.zeros_like(spec.frames)
+    for i in range(spec.n_frames):
+        shifted = shift_bins(
+            type(spec)(
+                spec.frames[i:i+1], spec.window, spec.hop_size,
+                spec.sample_rate, spec.original_length,
+            ),
+            shift=int(shifts[i]),
+        )
+        new_frames[i] = shifted.frames[0]
+    result = type(spec)(
+        new_frames, spec.window, spec.hop_size,
+        spec.sample_rate, spec.original_length,
+    )
+    return result.to_signal()
+
+
+def convolution_clap():
+    """Noise burst convolved with a short impulse — percussive clap."""
+    import numpy as np
+    burst = WhiteNoise().render(0.01)
+    # Synthetic impulse response: three early reflections + decay tail
+    n_ir = int(0.08 * SAMPLE_RATE)
+    ir_data = np.zeros(n_ir, dtype=np.float32)
+    ir_data[0] = 1.0
+    ir_data[int(0.005 * SAMPLE_RATE)] = 0.7
+    ir_data[int(0.012 * SAMPLE_RATE)] = 0.5
+    ir_data[int(0.020 * SAMPLE_RATE)] = 0.3
+    # Exponential decay tail
+    t = np.arange(n_ir) / SAMPLE_RATE
+    ir_data += np.float32(0.15 * np.exp(-t * 60) * np.random.default_rng(0).standard_normal(n_ir))
+    ir = Signal(ir_data)
+    return ConvolutionReverb(ir, wet=1.0)(burst)
+
+
+def cross_synth_textures():
+    """Cross-synthesis: bell magnitude stamped onto noise phase — glassy texture."""
+    dur = 3.0
+    bell_sig = bell(880, dur=dur)
+    noise = PinkNoise().render(dur) * 0.5
+    bell_spec = stft(bell_sig, n_fft=2048)
+    noise_spec = stft(noise, n_fft=2048)
+    result = cross_synthesize(noise_spec, bell_spec, mix=0.85)
+    return DatorroReverb(decay=0.7, wet=0.4)(result.to_signal()) * 0.5
+
+
+def spectral_smear_drone(dur=8.0):
+    """Extreme spectral smear on a chord — blurs into a shimmering drone."""
+    chord = (
+        Oscillator("saw").at(ji_major[0].hz).render(dur) * 0.2
+        + Oscillator("saw").at(ji_major[2].hz).render(dur) * 0.2
+        + Oscillator("saw").at(ji_major[4].hz).render(dur) * 0.2
+    )
+    env = adsr(0.5, 0.3, dur - 1.5, 0.8, 0.7)
+    sig = env.apply(chord)
+    spec = stft(sig, n_fft=4096)
+    smeared = smear(spec, amount=30.0)
+    return DatorroReverb(decay=0.85, wet=0.5)(smeared.to_signal()) * 0.5
+
+
+def vocoder_arp(bpm=120):
+    """Arpeggiated carrier processed through a vocoder with a saw modulator."""
+    dur = 4.0
+    # Carrier: arpeggiated sine
+    notes = [Note(ji_major[i], 0.25) for i in [0, 2, 4, 7]]
+    pitch, gate = Arpeggiator(notes, pattern="up", note_duration=0.125, bpm=bpm).cv(bars=4)
+    carrier = Oscillator("sine").at(pitch).render(pitch.duration) * note_env.trigger(gate)
+    # Modulator: slow saw sweep — gives rhythmic vowel-like filtering
+    mod = Oscillator("saw").at(80).render(pitch.duration) * 0.5
+    mod_env = adsr(0.01, 0.3, pitch.duration - 0.8, 0.6, 0.4)
+    modulator = mod_env.apply(mod)
+    return Vocoder(modulator, n_fft=1024, mix=0.8)(carrier) * 0.4

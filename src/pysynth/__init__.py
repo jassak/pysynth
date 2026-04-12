@@ -10,3 +10,9 @@ from pysynth.effects import (
 )
 from pysynth.music import Pitch, Note, Scale, Sequencer, Arpeggiator, PolySequencer
 from pysynth.mixing import Mixer, pan, play, render_to_wav
+from pysynth.spectral import (
+    Spectrum, stft,
+    freeze, smear, shift_bins, cross_synthesize, pitch_shift,
+    SpectralFreeze, SpectralSmear, PitchShift, Vocoder,
+    ConvolutionReverb,
+)
