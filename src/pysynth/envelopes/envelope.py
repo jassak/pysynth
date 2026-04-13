@@ -2,9 +2,62 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numba
 import numpy as np
 
 from pysynth._core import SAMPLE_RATE, Signal
+
+
+@numba.njit(cache=True)
+def _envelope_trigger(gate_data, out, seg_data, offsets, n_segs, sustain_node, sustain_level):
+    seg_idx = n_segs
+    seg_pos = 0
+    level = 0.0
+    prev_gate = 0.0
+
+    for i in range(len(gate_data)):
+        g = gate_data[i]
+
+        # Rising edge: restart from segment 0
+        if g > 0.0 and prev_gate <= 0.0:
+            seg_idx = 0
+            seg_pos = 0
+
+        # Falling edge: jump to release segments
+        if g <= 0.0 and prev_gate > 0.0:
+            if sustain_node >= 0 and sustain_node + 1 < n_segs:
+                seg_idx = sustain_node + 1
+                seg_pos = 0
+            else:
+                seg_idx = n_segs
+
+        if seg_idx < n_segs:
+            seg_start = offsets[seg_idx]
+            seg_len = offsets[seg_idx + 1] - seg_start
+
+            if sustain_node >= 0 and seg_idx == sustain_node and g > 0.0 and seg_pos >= seg_len:
+                level = sustain_level
+            elif seg_pos < seg_len:
+                level = seg_data[seg_start + seg_pos]
+                seg_pos += 1
+            else:
+                seg_idx += 1
+                seg_pos = 0
+                if sustain_node >= 0 and seg_idx == sustain_node and g > 0.0:
+                    level = sustain_level
+                elif seg_idx < n_segs:
+                    seg_start2 = offsets[seg_idx]
+                    seg_len2 = offsets[seg_idx + 1] - seg_start2
+                    if seg_pos < seg_len2:
+                        level = seg_data[seg_start2 + seg_pos]
+                        seg_pos += 1
+                else:
+                    level = 0.0
+        else:
+            level = 0.0
+
+        out[i] = level
+        prev_gate = g
 
 
 @dataclass
@@ -124,75 +177,38 @@ class Envelope:
         sr = gate.sample_rate
         gate_data = gate.data
         n_samples = len(gate_data)
-        out = np.zeros(n_samples, dtype=np.float32)
 
         # Pre-render each segment as an array
         seg_arrays = [seg.render(sr) for seg in self.segments]
         n_segs = len(seg_arrays)
-        sn = self.sustain_node  # None or index
+        sn = self.sustain_node
 
         # Determine sustain level (end value of sustain_node segment)
         if sn is not None and sn < n_segs:
-            sustain_level = self.segments[sn].end
+            sustain_level = float(self.segments[sn].end)
         else:
             sustain_level = 0.0
 
-        # State machine
-        seg_idx = n_segs  # current segment index (>= n_segs means idle)
-        seg_pos = 0       # position within current segment
-        level = 0.0       # current output level
-        prev_gate = 0.0   # previous gate value for edge detection
+        # Flatten seg_arrays into CSR-style storage for numba
+        if seg_arrays:
+            seg_data = np.concatenate([a.astype(np.float64) for a in seg_arrays])
+        else:
+            seg_data = np.empty(0, dtype=np.float64)
+        offsets = np.zeros(n_segs + 1, dtype=np.int64)
+        for k, a in enumerate(seg_arrays):
+            offsets[k + 1] = offsets[k] + len(a)
 
-        for i in range(n_samples):
-            g = gate_data[i]
-
-            # Rising edge: restart from segment 0
-            if g > 0.0 and prev_gate <= 0.0:
-                seg_idx = 0
-                seg_pos = 0
-
-            # Falling edge: jump to release segments
-            if g <= 0.0 and prev_gate > 0.0:
-                if sn is not None and sn + 1 < n_segs:
-                    seg_idx = sn + 1
-                    seg_pos = 0
-                    # Rescale release: current level may differ from segment start
-                    # We'll handle this by outputting the pre-rendered segment
-                    # scaled from current level
-                else:
-                    seg_idx = n_segs  # no release segments, go idle
-
-            if seg_idx < n_segs:
-                arr = seg_arrays[seg_idx]
-
-                # At or past sustain node while gate is high: hold
-                if sn is not None and seg_idx == sn and g > 0.0 and seg_pos >= len(arr):
-                    level = sustain_level
-                elif seg_pos < len(arr):
-                    level = float(arr[seg_pos])
-                    seg_pos += 1
-                else:
-                    # Segment exhausted, advance to next
-                    seg_idx += 1
-                    seg_pos = 0
-                    # Skip past sustain node if gate is still high
-                    if sn is not None and seg_idx == sn and g > 0.0:
-                        level = sustain_level
-                    elif seg_idx < n_segs:
-                        arr = seg_arrays[seg_idx]
-                        if seg_pos < len(arr):
-                            level = float(arr[seg_pos])
-                            seg_pos += 1
-                    else:
-                        level = 0.0
-            else:
-                # Idle — decay toward zero (already there for most cases)
-                level = 0.0
-
-            out[i] = level
-            prev_gate = g
-
-        return Signal(out, sr)
+        out = np.empty(n_samples, dtype=np.float64)
+        _envelope_trigger(
+            gate_data.astype(np.float64),
+            out,
+            seg_data,
+            offsets,
+            n_segs,
+            sn if sn is not None else -1,
+            sustain_level,
+        )
+        return Signal(out.astype(np.float32), sr)
 
 
 def adsr(
