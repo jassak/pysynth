@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "matplotlib>=3.10.8",
+    "numba>=0.65.0",
     "numpy>=2.4.4",
     "scipy>=1.17.1",
     "sounddevice>=0.5.5",
