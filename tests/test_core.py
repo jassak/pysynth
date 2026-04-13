@@ -212,6 +212,52 @@ class TestMonoStereoMul:
         np.testing.assert_allclose(c.data, [[20.0, 200.0]], atol=1e-6)
 
 
+class TestSignalShift:
+    def test_shift_prepends_silence(self):
+        s = _sig([1.0, 2.0, 3.0])
+        shifted = s.shift(0.002)  # 2 samples at SR=1000
+        assert len(shifted.data) == 5
+        np.testing.assert_allclose(shifted.data, [0.0, 0.0, 1.0, 2.0, 3.0], atol=1e-6)
+
+    def test_shift_zero_returns_copy(self):
+        s = _sig([1.0, 2.0])
+        shifted = s.shift(0.0)
+        np.testing.assert_array_equal(shifted.data, s.data)
+        assert shifted.data is not s.data
+
+    def test_shift_negative_returns_copy(self):
+        s = _sig([1.0, 2.0])
+        shifted = s.shift(-1.0)
+        np.testing.assert_array_equal(shifted.data, s.data)
+        assert shifted.data is not s.data
+
+    def test_shift_does_not_mutate_original(self):
+        s = _sig([1.0, 2.0])
+        original = s.data.copy()
+        _ = s.shift(0.005)
+        np.testing.assert_array_equal(s.data, original)
+
+    def test_shift_preserves_sample_rate(self):
+        s = _sig([1.0], sr=22050)
+        shifted = s.shift(0.1)
+        assert shifted.sample_rate == 22050
+
+    def test_shift_stereo(self):
+        data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        s = Signal(data, SR)
+        shifted = s.shift(0.001)  # 1 sample at SR=1000
+        assert shifted.data.shape == (3, 2)
+        np.testing.assert_allclose(shifted.data[0], [0.0, 0.0], atol=1e-6)
+        np.testing.assert_allclose(shifted.data[1], [1.0, 2.0], atol=1e-6)
+
+    def test_shift_composes_with_add(self):
+        a = _sig([1.0, 1.0])
+        b = _sig([2.0, 2.0])
+        mixed = a + b.shift(0.001)  # b starts 1 sample later
+        # a=[1,1,0] + b_shifted=[0,2,2] = [1,3,2]
+        np.testing.assert_allclose(mixed.data, [1.0, 3.0, 2.0], atol=1e-6)
+
+
 class TestSignalImmutability:
     def test_add_does_not_mutate(self):
         a = _sig([1.0, 2.0])

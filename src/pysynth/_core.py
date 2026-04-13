@@ -140,6 +140,22 @@ class Signal:
     # Class methods                                                        #
     # ------------------------------------------------------------------ #
 
+    def shift(self, seconds: float) -> Signal:
+        """Return a copy prepended with *seconds* of silence.
+
+        Composable with ``+`` for layering events at different times::
+
+            result = kick.shift(0.0) + snare.shift(0.5) + hat.shift(0.25)
+        """
+        if seconds <= 0:
+            return Signal(self.data.copy(), self.sample_rate)
+        n = int(seconds * self.sample_rate)
+        if self.data.ndim == 1:
+            pad = np.zeros(n, dtype=np.float32)
+        else:
+            pad = np.zeros((n, self.data.shape[1]), dtype=np.float32)
+        return Signal(np.concatenate([pad, self.data]), self.sample_rate)
+
     @classmethod
     def silence(cls, duration: float, sample_rate: int = SAMPLE_RATE) -> Signal:
         n = int(duration * sample_rate)
