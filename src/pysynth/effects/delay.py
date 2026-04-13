@@ -1,8 +1,34 @@
 from __future__ import annotations
 
+import numba
 import numpy as np
 
 from pysynth._core import Effect, Signal, _as_array
+
+
+@numba.njit(cache=True)
+def _fixed_delay_feedback(out, feedback, delay_samples, start, end):
+    for i in range(start, end):
+        out[i] += feedback * out[i - delay_samples]
+
+
+@numba.njit(cache=True)
+def _modulated_delay_loop(out, delay_arr, sr, feedback):
+    n = len(out)
+    for i in range(n):
+        d = delay_arr[i] * sr
+        if d < 1.0:
+            d = 1.0
+        if d > float(i):
+            d = float(i)
+        d_int = int(d)
+        frac = d - d_int
+        j_lo = i - d_int
+        j_hi = j_lo - 1
+        s_lo = out[j_lo] if j_lo >= 0 else 0.0
+        s_hi = out[j_hi] if j_hi >= 0 else 0.0
+        delayed = (1.0 - frac) * s_lo + frac * s_hi
+        out[i] += feedback * delayed
 
 
 class Delay(Effect):
@@ -41,8 +67,7 @@ class Delay(Effect):
         buf[:n] = x
         out = buf.copy()
 
-        for i in range(delay_samples, n + delay_samples):
-            out[i] += self.feedback * out[i - delay_samples]
+        _fixed_delay_feedback(out, self.feedback, delay_samples, delay_samples, n + delay_samples)
 
         # Trim back to original length
         out = out[:n]
@@ -67,20 +92,7 @@ def _modulated_delay(
     x64 = x.astype(np.float64)
     out = x64.copy()
 
-    for i in range(n):
-        d = float(delay_arr[i]) * sr
-        d = max(1.0, min(d, float(i)))  # clamp: ≥1 sample, ≤ available history
-        d_int = int(d)
-        frac = d - d_int
-
-        j_lo = i - d_int
-        j_hi = j_lo - 1
-
-        s_lo = out[j_lo] if j_lo >= 0 else 0.0
-        s_hi = out[j_hi] if j_hi >= 0 else 0.0
-
-        delayed = (1.0 - frac) * s_lo + frac * s_hi
-        out[i] += feedback * delayed
+    _modulated_delay_loop(out, delay_arr, sr, feedback)
 
     mixed = (1.0 - wet) * x64 + wet * out
     return mixed.astype(np.float32)
