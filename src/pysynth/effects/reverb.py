@@ -1,8 +1,39 @@
 from __future__ import annotations
 
+import numba
 import numpy as np
 
 from pysynth._core import Effect, Signal
+
+
+@numba.njit(cache=True)
+def _comb_filter(x, out, buf, d, feedback, damp1, damp2):
+    filt = 0.0
+    for i in range(len(x)):
+        buf_out = buf[i % d]
+        filt = buf_out * damp2 + filt * damp1
+        buf[i % d] = x[i] + filt * feedback
+        out[i] = buf_out
+
+
+@numba.njit(cache=True)
+def _allpass_filter(inp, out, buf, d):
+    for i in range(len(inp)):
+        buf_out = buf[i % d]
+        buf[i % d] = inp[i] + buf_out * 0.5
+        out[i] = buf_out - inp[i] * 0.5
+
+
+@numba.njit(cache=True)
+def _iir_lowpass_inplace(y, coef):
+    for i in range(1, len(y)):
+        y[i] = coef * y[i - 1] + (1.0 - coef) * y[i]
+
+
+@numba.njit(cache=True)
+def _iir_lowpass_range(arr, coef, start, end):
+    for k in range(start, end):
+        arr[k] = coef * arr[k - 1] + (1.0 - coef) * arr[k]
 
 
 def _allpass_comb(x: np.ndarray, d: int, start: int, diffusion: float) -> np.ndarray:
@@ -61,13 +92,8 @@ class SimpleReverb(Effect):
         for delay in self._COMB_DELAYS:
             d = max(1, int(delay * scale))
             buf = np.zeros(d)
-            filt = 0.0
             out = np.empty_like(x)
-            for i, sample in enumerate(x):
-                buf_out = buf[i % d]
-                filt = buf_out * damp2 + filt * damp1
-                buf[i % d] = sample + filt * feedback
-                out[i] = buf_out
+            _comb_filter(x, out, buf, d, feedback, damp1, damp2)
             comb_out += out
 
         comb_out /= len(self._COMB_DELAYS)
@@ -78,10 +104,7 @@ class SimpleReverb(Effect):
             d = max(1, int(delay * scale))
             buf = np.zeros(d)
             out = np.empty_like(ap_out)
-            for i, sample in enumerate(ap_out):
-                buf_out = buf[i % d]
-                buf[i % d] = sample + buf_out * 0.5
-                out[i] = buf_out - sample * 0.5
+            _allpass_filter(ap_out, out, buf, d)
             ap_out = out
 
         mixed = (1.0 - self.wet) * x + self.wet * ap_out
@@ -165,9 +188,7 @@ class DatorroReverb(Effect):
         y = np.concatenate([np.zeros(pad), mono])
 
         # Bandwidth pre-filter: first-order low-pass on input
-        bw = self.bandwidth
-        for i in range(1, len(y)):
-            y[i] = bw * y[i - 1] + (1.0 - bw) * y[i]
+        _iir_lowpass_inplace(y, self.bandwidth)
 
         # Input diffuser: four allpass filters in series
         y = _allpass_comb(y, c(142), pad, self.input_diffusion1)
@@ -190,9 +211,8 @@ class DatorroReverb(Effect):
                     + self.decay_diffusion1 * dl[j, i - dlt[j] :][:s]
                 )
                 dl[j + 1, i:][:s] = dl[j, i - dlt[j] :][:s] - self.decay_diffusion1 * dl[j, i:][:s]
-                # High-frequency damping: sample-by-sample first-order LP
-                for k in range(i, i + s):
-                    dl[j + 1, k] = self.damping * dl[j + 1, k - 1] + (1.0 - self.damping) * dl[j + 1, k]
+                # High-frequency damping: first-order LP (numba-accelerated)
+                _iir_lowpass_range(dl[j + 1], self.damping, i, i + s)
                 dl[j + 2, i:][:s] = (
                     self.decay * dl[j + 1, i - dlt[j + 1] :][:s]
                     - self.decay_diffusion2 * dl[j + 2, i - dlt[j + 2] :][:s]
