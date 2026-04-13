@@ -139,6 +139,40 @@ class TestStepSequencerCv:
         assert val.sample_rate == 2000
 
 
+class TestStepSequencerRetrigger:
+    def test_consecutive_steps_have_gate_gap(self):
+        steps = [Step(440.0, gate_length=1.0), Step(880.0, gate_length=1.0)]
+        _, gate = StepSequencer(steps, bpm=BPM).cv(sample_rate=SR)
+        boundary = _step_samples()
+        # Gate should be zero at the start of the second step
+        assert gate.data[boundary] == 0.0
+        # But high after the gap
+        gap_end = boundary + int(0.002 * SR)
+        assert gate.data[gap_end] > 0.0
+
+    def test_tie_preserves_continuous_gate(self):
+        steps = [Step(440.0, gate_length=1.0), Step.tie()]
+        _, gate = StepSequencer(steps, bpm=BPM).cv(sample_rate=SR)
+        boundary = _step_samples()
+        # Tie should NOT have a gap
+        assert gate.data[boundary - 1] == pytest.approx(1.0)
+        assert gate.data[boundary] == pytest.approx(1.0)
+
+    def test_rest_then_note_no_gap(self):
+        steps = [Step(440.0), Step.rest(), Step(880.0)]
+        _, gate = StepSequencer(steps, bpm=BPM).cv(sample_rate=SR)
+        third_start = _step_samples(2)
+        # Note after rest should NOT have a retrigger gap
+        assert gate.data[third_start] > 0.0
+
+    def test_retrigger_gap_zero_disables(self):
+        steps = [Step(440.0, gate_length=1.0), Step(880.0, gate_length=1.0)]
+        _, gate = StepSequencer(steps, bpm=BPM, retrigger_gap=0).cv(sample_rate=SR)
+        boundary = _step_samples()
+        assert gate.data[boundary - 1] > 0.0
+        assert gate.data[boundary] > 0.0
+
+
 class TestStepSequencerRotate:
     def test_rotate_by_one(self):
         steps = [Step(1.0), Step(2.0), Step(3.0)]

@@ -47,9 +47,11 @@ class PolySequencer:
         events: list[tuple[float, Note | Pitch]],
         n_voices: int = 4,
         bpm: float = 120.0,
+        retrigger_gap: float = 0.002,
     ) -> None:
         self.n_voices = n_voices
         self.bpm = bpm
+        self.retrigger_gap = retrigger_gap
 
         # Normalise to (onset, Note) sorted by onset
         normalised: list[tuple[float, Note]] = []
@@ -152,10 +154,13 @@ class PolySequencer:
         allocated = self._allocate()
         result: list[tuple[Signal, Signal]] = []
 
+        gap_samples = int(self.retrigger_gap * sample_rate)
+
         for voice_events in allocated:
             pitch_buf = np.zeros(total_samples, dtype=np.float32)
             gate_buf = np.zeros(total_samples, dtype=np.float32)
 
+            prev_end_beat = -1.0
             for onset, note in voice_events:
                 start = int(onset * beat_duration * sample_rate)
                 dur_samples = int(note.duration * beat_duration * sample_rate)
@@ -163,6 +168,12 @@ class PolySequencer:
                 if not note.is_rest:
                     pitch_buf[start:end] = note.pitch.hz
                     gate_buf[start:end] = note.velocity
+                    # Insert retrigger gap when this note starts exactly
+                    # where the previous note on this voice ended.
+                    if prev_end_beat >= onset and gap_samples > 0:
+                        gap_end = min(start + gap_samples, end)
+                        gate_buf[start:gap_end] = 0.0
+                    prev_end_beat = onset + note.duration
 
             result.append((Signal(pitch_buf, sample_rate), Signal(gate_buf, sample_rate)))
 

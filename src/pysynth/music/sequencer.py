@@ -19,6 +19,17 @@ class Sequencer:
     These Signals drive oscillators, envelopes, and effects via the
     existing Signal algebra — no need to bake everything into a generator.
 
+    Parameters
+    ----------
+    notes:
+        Sequence of Notes to play.
+    bpm:
+        Tempo in beats per minute.
+    retrigger_gap:
+        Duration in seconds of the zero-gate gap inserted between
+        consecutive non-rest notes so that ADSR envelopes re-trigger.
+        Set to ``0`` to disable.
+
     Usage::
 
         from pysynth.music import Scale, Note, Sequencer
@@ -36,9 +47,15 @@ class Sequencer:
         output = LowPassFilter(cutoff)(audio) * amp
     """
 
-    def __init__(self, notes: list[Note], bpm: float = 120.0) -> None:
+    def __init__(
+        self,
+        notes: list[Note],
+        bpm: float = 120.0,
+        retrigger_gap: float = 0.002,
+    ) -> None:
         self.notes = notes
         self.bpm = bpm
+        self.retrigger_gap = retrigger_gap
 
     def cv(
         self,
@@ -72,13 +89,25 @@ class Sequencer:
         pitch_buf = np.zeros(total_samples, dtype=np.float32)
         gate_buf = np.zeros(total_samples, dtype=np.float32)
 
+        gap_samples = int(self.retrigger_gap * sample_rate)
+
         offset = 0
+        prev_was_note = False
         for note in notes:
             dur_samples = int(note.duration * beat_duration * sample_rate)
             end = min(offset + dur_samples, total_samples)
             if not note.is_rest:
                 pitch_buf[offset:end] = note.pitch.hz
                 gate_buf[offset:end] = note.velocity
+                # Zero out the start of this note's gate if the previous
+                # note was also active, creating a falling edge so the
+                # envelope re-triggers.
+                if prev_was_note and gap_samples > 0:
+                    gap_end = min(offset + gap_samples, end)
+                    gate_buf[offset:gap_end] = 0.0
+                prev_was_note = True
+            else:
+                prev_was_note = False
             offset = end
 
         return Signal(pitch_buf, sample_rate), Signal(gate_buf, sample_rate)

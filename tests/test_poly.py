@@ -129,6 +129,44 @@ class TestCvOutput:
             assert len(p.data) == 0
 
 
+class TestRetriggerGap:
+    def test_sequential_notes_on_same_voice_have_gap(self):
+        events = [
+            (0.0, Note(Pitch(440), 1.0)),
+            (1.0, Note(Pitch(550), 1.0)),
+        ]
+        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
+        pitch, gate = voices[0]
+        boundary = _samples(1.0)
+        # Gate should be zero at the start of the second note
+        assert gate.data[boundary] == 0.0
+        # But high after the gap
+        gap_end = boundary + int(0.002 * SR)
+        assert gate.data[gap_end] > 0.0
+
+    def test_non_adjacent_notes_no_gap(self):
+        events = [
+            (0.0, Note(Pitch(440), 1.0)),  # ends at beat 1
+            (2.0, Note(Pitch(550), 1.0)),  # starts at beat 2 (gap between)
+        ]
+        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
+        _, gate = voices[0]
+        note2_start = _samples(2.0)
+        # No retrigger gap needed — there's already silence between the notes
+        assert gate.data[note2_start] > 0.0
+
+    def test_retrigger_gap_zero_disables(self):
+        events = [
+            (0.0, Note(Pitch(440), 1.0)),
+            (1.0, Note(Pitch(550), 1.0)),
+        ]
+        voices = PolySequencer(events, n_voices=1, bpm=120, retrigger_gap=0).cv(sample_rate=SR)
+        _, gate = voices[0]
+        boundary = _samples(1.0)
+        assert gate.data[boundary - 1] > 0.0
+        assert gate.data[boundary] > 0.0
+
+
 class TestFromChords:
     def test_sequential_chords(self):
         chords = [

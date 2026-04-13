@@ -84,3 +84,46 @@ class TestSequencerCv:
         pitch, gate = Sequencer([], bpm=120).cv(sample_rate=SR)
         assert len(pitch.data) == 0
         assert len(gate.data) == 0
+
+
+class TestRetriggerGap:
+    def test_consecutive_notes_have_gate_gap(self):
+        notes = [Note(Pitch(440), 1.0), Note(Pitch(880), 1.0)]
+        _, gate = Sequencer(notes, bpm=120).cv(sample_rate=SR)
+        boundary = _samples(1.0)
+        # Gate should be zero at the start of the second note
+        assert gate.data[boundary] == 0.0
+        # But high a few ms later
+        gap_end = boundary + int(0.002 * SR)
+        assert gate.data[gap_end] > 0.0
+
+    def test_rest_does_not_double_gap(self):
+        notes = [Note(Pitch(440), 1.0), Note.rest(1.0), Note(Pitch(880), 1.0)]
+        _, gate = Sequencer(notes, bpm=120).cv(sample_rate=SR)
+        # Note after rest should NOT have a retrigger gap (rest already provides one)
+        third_start = _samples(2.0)
+        assert gate.data[third_start] > 0.0
+
+    def test_retrigger_gap_zero_disables(self):
+        notes = [Note(Pitch(440), 1.0), Note(Pitch(880), 1.0)]
+        _, gate = Sequencer(notes, bpm=120, retrigger_gap=0).cv(sample_rate=SR)
+        boundary = _samples(1.0)
+        # No gap — gate stays high across the boundary
+        assert gate.data[boundary - 1] > 0.0
+        assert gate.data[boundary] > 0.0
+
+    def test_retrigger_gap_custom_width(self):
+        notes = [Note(Pitch(440), 1.0), Note(Pitch(880), 1.0)]
+        _, gate = Sequencer(notes, bpm=120, retrigger_gap=0.01).cv(sample_rate=SR)
+        boundary = _samples(1.0)
+        gap_samples = int(0.01 * SR)
+        # Inside the gap: zero
+        assert gate.data[boundary + gap_samples // 2] == 0.0
+        # After the gap: high
+        assert gate.data[boundary + gap_samples] > 0.0
+
+    def test_single_note_no_gap(self):
+        notes = [Note(Pitch(440), 1.0)]
+        _, gate = Sequencer(notes, bpm=120).cv(sample_rate=SR)
+        # First sample should have gate high (no preceding note to gap from)
+        assert gate.data[0] > 0.0

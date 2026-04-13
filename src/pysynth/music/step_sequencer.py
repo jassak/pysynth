@@ -88,11 +88,13 @@ class StepSequencer:
         bpm: float = 120.0,
         step_length: float = 0.25,
         slide_time: float = 0.02,
+        retrigger_gap: float = 0.002,
     ) -> None:
         self.steps = steps
         self.bpm = bpm
         self.step_length = step_length
         self.slide_time = slide_time
+        self.retrigger_gap = retrigger_gap
 
     def cv(
         self,
@@ -116,7 +118,9 @@ class StepSequencer:
         value_buf = np.zeros(total_samples, dtype=np.float32)
         gate_buf = np.zeros(total_samples, dtype=np.float32)
 
+        gap_samples = int(self.retrigger_gap * sample_rate)
         prev_value = 0.0
+        prev_was_active = False
         step_starts: list[int] = []
 
         for i, step in enumerate(steps):
@@ -127,13 +131,19 @@ class StepSequencer:
             if step.is_tie:
                 value_buf[start:end] = prev_value
                 gate_buf[start:end] = 1.0
+                # ties keep prev_was_active as-is (no retrigger needed)
             elif step.is_rest:
-                pass  # zeros already
+                prev_was_active = False
             else:
                 value_buf[start:end] = step.value
                 gate_end = min(start + int(step.gate_length * step_dur * sample_rate), end)
                 gate_buf[start:gate_end] = 1.0
+                # Insert retrigger gap when consecutive active steps
+                if prev_was_active and gap_samples > 0:
+                    gap_end = min(start + gap_samples, gate_end)
+                    gate_buf[start:gap_end] = 0.0
                 prev_value = step.value
+                prev_was_active = True
 
         # Slide pass
         slide_samples = int(self.slide_time * sample_rate)
@@ -161,10 +171,10 @@ class StepSequencer:
     def rotate(self, n: int = 1) -> StepSequencer:
         """Return a new StepSequencer with the pattern rotated by *n* steps."""
         if not self.steps:
-            return StepSequencer([], self.bpm, self.step_length, self.slide_time)
+            return StepSequencer([], self.bpm, self.step_length, self.slide_time, self.retrigger_gap)
         n = n % len(self.steps)
         rotated = self.steps[n:] + self.steps[:n]
-        return StepSequencer(rotated, self.bpm, self.step_length, self.slide_time)
+        return StepSequencer(rotated, self.bpm, self.step_length, self.slide_time, self.retrigger_gap)
 
     @classmethod
     def from_values(
