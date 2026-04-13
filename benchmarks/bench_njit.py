@@ -79,6 +79,44 @@ def bench_envelope():
     bench("Envelope trigger", lambda: env.trigger(gate))
 
 
+def bench_filter_lowpass():
+    from pysynth.effects.filters import LowPassFilter
+
+    # Modulated cutoff: sweep 200-4000 Hz
+    cutoff = Signal(
+        (np.sin(2 * np.pi * 1.0 * np.arange(N) / SR) * 1900 + 2100).astype(np.float32),
+        SR,
+    )
+    lpf = LowPassFilter(cutoff_hz=cutoff, order=4)
+    bench("LowPassFilter (modulated)", lambda: lpf(NOISE))
+
+
+def bench_filter_highpass():
+    from pysynth.effects.filters import HighPassFilter
+
+    cutoff = Signal(
+        (np.sin(2 * np.pi * 0.5 * np.arange(N) / SR) * 400 + 500).astype(np.float32),
+        SR,
+    )
+    hpf = HighPassFilter(cutoff_hz=cutoff, order=4)
+    bench("HighPassFilter (modulated)", lambda: hpf(NOISE))
+
+
+def bench_filter_bandpass():
+    from pysynth.effects.filters import BandPassFilter
+
+    low = Signal(
+        (np.sin(2 * np.pi * 0.3 * np.arange(N) / SR) * 200 + 400).astype(np.float32),
+        SR,
+    )
+    high = Signal(
+        (np.sin(2 * np.pi * 0.3 * np.arange(N) / SR) * 500 + 2000).astype(np.float32),
+        SR,
+    )
+    bpf = BandPassFilter(low_hz=low, high_hz=high, order=4)
+    bench("BandPassFilter (modulated)", lambda: bpf(NOISE))
+
+
 if __name__ == "__main__":
     import sys
 
@@ -91,6 +129,9 @@ if __name__ == "__main__":
         "simple_reverb": bench_simple_reverb,
         "dattorro_reverb": bench_dattorro_reverb,
         "envelope": bench_envelope,
+        "filter_lowpass": bench_filter_lowpass,
+        "filter_highpass": bench_filter_highpass,
+        "filter_bandpass": bench_filter_bandpass,
     }
 
     if "all" in targets:
