@@ -109,20 +109,23 @@ def _modulated_filter(
 ) -> np.ndarray:
     """Chunked causal sosfilt with time-varying single cutoff."""
     n = len(data)
-    sr = int(nyquist * 2)
     cutoff_arr = _as_array(cutoff, n)
-    x = data.astype(np.float64)
-    out = np.zeros(n, dtype=np.float64)
-    zi = None
-    for start in range(0, n, _FILTER_CHUNK):
-        end = min(start + _FILTER_CHUNK, n)
-        chunk = x[start:end]
-        cutoff_val = float(np.clip(np.mean(cutoff_arr[start:end]), 1.0, nyquist - 1.0))
-        sos = scipy_signal.butter(order, cutoff_val / nyquist, btype=btype, output="sos")
-        if zi is None:
-            zi = scipy_signal.sosfilt_zi(sos) * chunk[0]
-        chunk_out, zi = scipy_signal.sosfilt(sos, chunk, zi=zi)
-        out[start:end] = chunk_out
+    out = np.zeros_like(data, dtype=np.float64)
+    for c in range(data.shape[1]) if data.ndim == 2 else [None]:
+        x = (data[:, c] if c is not None else data).astype(np.float64)
+        zi = None
+        for start in range(0, n, _FILTER_CHUNK):
+            end = min(start + _FILTER_CHUNK, n)
+            chunk = x[start:end]
+            cutoff_val = float(np.clip(np.mean(cutoff_arr[start:end]), 1.0, nyquist - 1.0))
+            sos = scipy_signal.butter(order, cutoff_val / nyquist, btype=btype, output="sos")
+            if zi is None:
+                zi = scipy_signal.sosfilt_zi(sos) * chunk[0]
+            chunk_out, zi = scipy_signal.sosfilt(sos, chunk, zi=zi)
+            if c is not None:
+                out[start:end, c] = chunk_out
+            else:
+                out[start:end] = chunk_out
     return out.astype(np.float32)
 
 
@@ -137,19 +140,23 @@ def _modulated_bandpass(
     n = len(data)
     low_arr = _as_array(low, n)
     high_arr = _as_array(high, n)
-    x = data.astype(np.float64)
-    out = np.zeros(n, dtype=np.float64)
-    zi = None
-    for start in range(0, n, _FILTER_CHUNK):
-        end = min(start + _FILTER_CHUNK, n)
-        chunk = x[start:end]
-        low_val = float(np.clip(np.mean(low_arr[start:end]), 1.0, nyquist - 2.0))
-        high_val = float(np.clip(np.mean(high_arr[start:end]), low_val + 1.0, nyquist - 1.0))
-        sos = scipy_signal.butter(
-            order, [low_val / nyquist, high_val / nyquist], btype="band", output="sos"
-        )
-        if zi is None:
-            zi = scipy_signal.sosfilt_zi(sos) * chunk[0]
-        chunk_out, zi = scipy_signal.sosfilt(sos, chunk, zi=zi)
-        out[start:end] = chunk_out
+    out = np.zeros_like(data, dtype=np.float64)
+    for c in range(data.shape[1]) if data.ndim == 2 else [None]:
+        x = (data[:, c] if c is not None else data).astype(np.float64)
+        zi = None
+        for start in range(0, n, _FILTER_CHUNK):
+            end = min(start + _FILTER_CHUNK, n)
+            chunk = x[start:end]
+            low_val = float(np.clip(np.mean(low_arr[start:end]), 1.0, nyquist - 2.0))
+            high_val = float(np.clip(np.mean(high_arr[start:end]), low_val + 1.0, nyquist - 1.0))
+            sos = scipy_signal.butter(
+                order, [low_val / nyquist, high_val / nyquist], btype="band", output="sos"
+            )
+            if zi is None:
+                zi = scipy_signal.sosfilt_zi(sos) * chunk[0]
+            chunk_out, zi = scipy_signal.sosfilt(sos, chunk, zi=zi)
+            if c is not None:
+                out[start:end, c] = chunk_out
+            else:
+                out[start:end] = chunk_out
     return out.astype(np.float32)

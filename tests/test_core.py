@@ -145,6 +145,73 @@ class TestSignalNegSub:
 # ------------------------------------------------------------------ #
 
 
+def _stereo(left, right, sr=SR):
+    return Signal(np.column_stack([
+        np.array(left, dtype=np.float32),
+        np.array(right, dtype=np.float32),
+    ]), sr)
+
+
+# ------------------------------------------------------------------ #
+# Signal algebra — mono/stereo interop                                 #
+# ------------------------------------------------------------------ #
+
+
+class TestMonoStereoAdd:
+    def test_mono_plus_stereo(self):
+        m = _sig([1.0, 2.0])
+        s = _stereo([10.0, 20.0], [100.0, 200.0])
+        c = m + s
+        assert c.n_channels == 2
+        np.testing.assert_allclose(c.data[:, 0], [11.0, 22.0], atol=1e-6)
+        np.testing.assert_allclose(c.data[:, 1], [101.0, 202.0], atol=1e-6)
+
+    def test_stereo_plus_mono(self):
+        m = _sig([1.0, 2.0])
+        s = _stereo([10.0, 20.0], [100.0, 200.0])
+        np.testing.assert_allclose((s + m).data, (m + s).data, atol=1e-6)
+
+    def test_mono_plus_stereo_different_lengths(self):
+        m = _sig([1.0, 2.0, 3.0])
+        s = _stereo([10.0], [100.0])
+        c = m + s
+        assert c.n_channels == 2
+        assert len(c.data) == 3
+        np.testing.assert_allclose(c.data[0], [11.0, 101.0], atol=1e-6)
+        np.testing.assert_allclose(c.data[1], [2.0, 2.0], atol=1e-6)
+        np.testing.assert_allclose(c.data[2], [3.0, 3.0], atol=1e-6)
+
+    def test_mono_sub_stereo(self):
+        m = _sig([5.0, 6.0])
+        s = _stereo([1.0, 2.0], [3.0, 4.0])
+        c = m - s
+        assert c.n_channels == 2
+        np.testing.assert_allclose(c.data[:, 0], [4.0, 4.0], atol=1e-6)
+        np.testing.assert_allclose(c.data[:, 1], [2.0, 2.0], atol=1e-6)
+
+
+class TestMonoStereoMul:
+    def test_mono_times_stereo(self):
+        m = _sig([2.0, 3.0])
+        s = _stereo([10.0, 20.0], [100.0, 200.0])
+        c = m * s
+        assert c.n_channels == 2
+        np.testing.assert_allclose(c.data[:, 0], [20.0, 60.0], atol=1e-6)
+        np.testing.assert_allclose(c.data[:, 1], [200.0, 600.0], atol=1e-6)
+
+    def test_stereo_times_mono(self):
+        m = _sig([2.0, 3.0])
+        s = _stereo([10.0, 20.0], [100.0, 200.0])
+        np.testing.assert_allclose((s * m).data, (m * s).data, atol=1e-6)
+
+    def test_mono_times_stereo_truncates(self):
+        m = _sig([2.0, 3.0, 4.0])
+        s = _stereo([10.0], [100.0])
+        c = m * s
+        assert len(c.data) == 1
+        np.testing.assert_allclose(c.data, [[20.0, 200.0]], atol=1e-6)
+
+
 class TestSignalImmutability:
     def test_add_does_not_mutate(self):
         a = _sig([1.0, 2.0])

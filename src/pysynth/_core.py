@@ -51,12 +51,26 @@ class Signal:
                     f"Cannot add signals with different sample rates: "
                     f"{self.sample_rate} vs {other.sample_rate}"
                 )
-            if len(self.data) >= len(other.data):
-                out = self.data.copy()
-                out[: len(other.data)] += other.data
+            a, b = self.data, other.data
+            if a.ndim == b.ndim:
+                # Same type (mono+mono or stereo+stereo) — fast path
+                if len(a) >= len(b):
+                    out = a.copy()
+                    out[: len(b)] += b
+                else:
+                    out = b.copy()
+                    out[: len(a)] += a
             else:
-                out = other.data.copy()
-                out[: len(self.data)] += self.data
+                # Mixed mono/stereo — promote mono to (n, 1) view, use buffer
+                if a.ndim == 1:
+                    a = a[:, np.newaxis]
+                else:
+                    b = b[:, np.newaxis]
+                ch = max(a.shape[1], b.shape[1])
+                n = max(len(a), len(b))
+                out = np.zeros((n, ch), dtype=np.float32)
+                out[: len(a)] += a
+                out[: len(b)] += b
             return Signal(out, self.sample_rate)
         # Scalar: treat as a constant signal (DC offset / frequency shift for FM)
         return Signal(self.data + np.float32(other), self.sample_rate)
@@ -73,7 +87,14 @@ class Signal:
                     f"{self.sample_rate} vs {other.sample_rate}"
                 )
             n = min(len(self.data), len(other.data))
-            return Signal(self.data[:n] * other.data[:n], self.sample_rate)
+            a, b = self.data[:n], other.data[:n]
+            if a.ndim != b.ndim:
+                # Mixed mono/stereo — promote mono to (n, 1) view
+                if a.ndim == 1:
+                    a = a[:, np.newaxis]
+                else:
+                    b = b[:, np.newaxis]
+            return Signal(a * b, self.sample_rate)
         return Signal(self.data * np.float32(other), self.sample_rate)
 
     def __rmul__(self, other: Signal | float) -> Signal:
