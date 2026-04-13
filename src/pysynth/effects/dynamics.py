@@ -1,8 +1,21 @@
 from __future__ import annotations
 
+import numba
 import numpy as np
 
 from pysynth._core import Effect, Signal
+
+
+@numba.njit(cache=True)
+def _envelope_follow(abs_x, envelope, attack_coef, release_coef):
+    env = 0.0
+    for i in range(len(abs_x)):
+        sample = abs_x[i]
+        if sample > env:
+            env = attack_coef * env + (1.0 - attack_coef) * sample
+        else:
+            env = release_coef * env + (1.0 - release_coef) * sample
+        envelope[i] = env
 
 
 def _db_to_linear(db: float) -> float:
@@ -60,16 +73,8 @@ class Compressor(Effect):
         attack_coef = np.exp(-1.0 / (self.attack * sr))
         release_coef = np.exp(-1.0 / (self.release * sr))
 
-        envelope = np.zeros_like(x)
-        gain = np.ones_like(x)
-        env = 0.0
-
-        for i, sample in enumerate(np.abs(x)):
-            if sample > env:
-                env = attack_coef * env + (1.0 - attack_coef) * sample
-            else:
-                env = release_coef * env + (1.0 - release_coef) * sample
-            envelope[i] = env
+        envelope = np.empty(len(x), dtype=np.float64)
+        _envelope_follow(np.abs(x).astype(np.float64), envelope, attack_coef, release_coef)
 
         over = np.maximum(envelope - self.threshold, 0.0)
         reduction = over * (1.0 - 1.0 / self.ratio)
