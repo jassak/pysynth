@@ -12,50 +12,12 @@ Everything is a function to keep import fast. Call it to get a Signal:
   >>> melody().play()
 """
 
-from pysynth import (
-    SAMPLE_RATE,
-    Signal,
-    Generator,
-    Oscillator,
-    WhiteNoise,
-    PinkNoise,
-    Wavetable,
-    Segment,
-    Envelope,
-    adsr,
-    LowPassFilter,
-    HighPassFilter,
-    BandPassFilter,
-    Gain,
-    Compressor,
-    Limiter,
-    SimpleReverb,
-    DatorroReverb,
-    Delay,
-    Echo,
-    Tanh,
-    Clip,
-    Overdrive,
-    Pitch,
-    Note,
-    Scale,
-    Sequencer,
-    Step,
-    StepSequencer,
-    Arpeggiator,
-    Mixer,
-    pan,
-    stft,
-    freeze,
-    smear,
-    shift_bins,
-    cross_synthesize,
-    pitch_shift,
-    SpectralFreeze,
-    SpectralSmear,
-    PitchShift,
-    Vocoder,
-    ConvolutionReverb,
+from pysynth import ( SAMPLE_RATE, Signal, Generator, Oscillator, WhiteNoise,
+    PinkNoise, Wavetable, Segment, Envelope, adsr, LowPassFilter, HighPassFilter,
+    BandPassFilter, Gain, Compressor, Limiter, SimpleReverb, DatorroReverb, Delay,
+    Echo, Tanh, Clip, Overdrive, Pitch, Note, Scale, Sequencer, Step, StepSequencer,
+    Arpeggiator, Mixer, pan, stft, freeze, smear, shift_bins, cross_synthesize,
+    pitch_shift, SpectralFreeze, SpectralSmear, PitchShift, Vocoder, ConvolutionReverb,
 )
 
 DUR = 3.0
@@ -725,3 +687,656 @@ def vocoder_arp(bpm=120):
     mod_env = adsr(0.01, 0.3, pitch.duration - 0.8, 0.6, 0.4)
     modulator = mod_env.apply(mod)
     return Vocoder(modulator, n_fft=1024, mix=0.8)(carrier) * 0.4
+
+
+# ---------------------------------------------------------------------------
+# 15. TR-808 drum machine
+# ---------------------------------------------------------------------------
+
+
+def tr808_kick(decay=0.7):
+    """808 kick: sine with fast pitch sweep from ~160 Hz down to ~45 Hz,
+    plus a short click transient for the attack."""
+    import numpy as np
+
+    dur = 0.05 + decay
+    n = int(dur * SAMPLE_RATE)
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    # exponential pitch sweep: starts at ~160 Hz, decays to ~45 Hz
+    pitch_sig = Signal(np.float32(45.0 + 115.0 * np.exp(-t * 35.0)))
+    body = Oscillator("sine").at(pitch_sig).render(dur)
+    # amplitude envelope: fast attack, long exponential decay
+    amp = Envelope([
+        Segment(0.004, 0.0, 1.0, curve=-4),
+        Segment(decay, 1.0, 0.0, curve=4),
+    ])
+    # click transient from a high-pitched burst
+    click_env = Envelope([Segment(0.003, 1.0, 0.0, curve=-6)])
+    click = click_env.apply(Oscillator("sine").at(160).render(dur)) * 0.6
+    return amp.apply(body) + click
+
+
+def tr808_snare():
+    """808 snare: pitched sine body + bandpass-filtered noise rattle."""
+    dur = 0.25
+    # body: two sine partials with fast pitch drop
+    import numpy as np
+    n = int(dur * SAMPLE_RATE)
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    pitch1 = Signal(np.float32(180.0 + 40.0 * np.exp(-t * 50.0)))
+    pitch2 = Signal(np.float32(330.0 + 40.0 * np.exp(-t * 50.0)))
+    body_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur - 0.001, 1.0, 0.0, curve=3),
+    ])
+    body = body_env.apply(
+        Oscillator("sine").at(pitch1).render(dur) * 0.5
+        + Oscillator("sine").at(pitch2).render(dur) * 0.3
+    )
+    # noise rattle
+    noise_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur - 0.001, 1.0, 0.0, curve=2),
+    ])
+    noise = noise_env.apply(
+        BandPassFilter(2000, 9000)(WhiteNoise().render(dur))
+    )
+    return body * 0.6 + noise * 0.5
+
+
+def tr808_clap():
+    """808 clap: multiple noise bursts spread ~5 ms apart, then a tail."""
+    import numpy as np
+
+    burst_dur = 0.012
+    gap = 0.005
+    tail_dur = 0.18
+    total = burst_dur * 4 + gap * 3 + tail_dur
+    result = Signal.silence(total)
+    burst_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(burst_dur - 0.001, 1.0, 0.0, curve=-2),
+    ])
+    # 4 rapid bursts
+    for i in range(4):
+        offset = int((burst_dur + gap) * i * SAMPLE_RATE)
+        burst = burst_env.apply(
+            BandPassFilter(1200, 3500)(WhiteNoise().render(burst_dur))
+        )
+        end = min(len(result.data), offset + len(burst.data))
+        result.data[offset:end] += burst.data[:end - offset] * 0.7
+    # reverberant noise tail
+    tail_start = int((burst_dur + gap) * 3 * SAMPLE_RATE)
+    tail_env = Envelope([
+        Segment(0.005, 0.8, 1.0, curve=-2),
+        Segment(tail_dur - 0.005, 1.0, 0.0, curve=3),
+    ])
+    tail = tail_env.apply(
+        BandPassFilter(800, 3500)(WhiteNoise().render(tail_dur))
+    )
+    end = min(len(result.data), tail_start + len(tail.data))
+    result.data[tail_start:end] += tail.data[:end - tail_start] * 0.5
+    return result
+
+
+def tr808_hihat(open=False):
+    """808 hi-hat: six square oscillators at metallic ratios, highpass filtered."""
+    dur = 0.3 if open else 0.05
+    # the original 808 uses six metal-square oscillators at these frequencies
+    freqs = [204.5, 298.5, 366.5, 522.7, 540.5, 800.6]
+    metal = sum(
+        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        for f in freqs
+    )
+    filtered = (HighPassFilter(7000) | BandPassFilter(7500, 12000))(metal)
+    if open:
+        env = Envelope([
+            Segment(0.001, 0.0, 1.0, curve=-4),
+            Segment(dur - 0.001, 1.0, 0.0, curve=2),
+        ])
+    else:
+        env = Envelope([
+            Segment(0.001, 0.0, 1.0, curve=-4),
+            Segment(dur - 0.001, 1.0, 0.0, curve=-3),
+        ])
+    return env.apply(filtered) * 0.5
+
+
+def tr808_cowbell():
+    """808 cowbell: two square oscillators at 540 Hz and 800 Hz."""
+    dur = 0.12
+    sig = (
+        Oscillator("square").at(540).render(dur) * 0.5
+        + Oscillator("square").at(800).render(dur) * 0.5
+    )
+    filtered = BandPassFilter(500, 3000)(sig)
+    env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(0.03, 1.0, 0.6, curve=1),
+        Segment(dur - 0.031, 0.6, 0.0, curve=2),
+    ])
+    return env.apply(filtered) * 0.4
+
+
+def tr808_tom(pitch=100, decay=0.3):
+    """808 tom: sine with pitch sweep, variable tuning."""
+    import numpy as np
+    dur = decay + 0.01
+    n = int(dur * SAMPLE_RATE)
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    pitch_sig = Signal(np.float32(pitch + pitch * 0.5 * np.exp(-t * 30.0)))
+    env = Envelope([
+        Segment(0.002, 0.0, 1.0, curve=-4),
+        Segment(decay, 1.0, 0.0, curve=3),
+    ])
+    return env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+
+
+def tr808_rimshot():
+    """808 rimshot: short pitched triangle + noise click."""
+    dur = 0.03
+    tone_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-6),
+        Segment(dur - 0.001, 1.0, 0.0, curve=-3),
+    ])
+    tone = tone_env.apply(Oscillator("triangle").at(500).render(dur))
+    noise = tone_env.apply(
+        HighPassFilter(2000)(WhiteNoise().render(dur))
+    )
+    return tone * 0.6 + noise * 0.4
+
+
+def tr808_pattern(bpm=126):
+    """Classic 808 boom-bap pattern: kick, snare, hats, with echo."""
+    step = 60.0 / bpm / 2  # 16th note duration
+    bars = 2
+    total = step * 16 * bars
+    result = Signal.silence(total)
+
+    k = tr808_kick()
+    s = tr808_snare()
+    ch = tr808_hihat(open=False)
+    oh = tr808_hihat(open=True)
+    cb = tr808_cowbell()
+
+    def place(sig, beat_16th):
+        n = int(beat_16th * step * SAMPLE_RATE)
+        end = min(len(result.data), n + len(sig.data))
+        result.data[n:end] += sig.data[:end - n]
+
+    for bar in range(bars):
+        off = bar * 16
+        # kick: 1, 4, 11 (syncopated)
+        for b in [0, 3, 10]:
+            place(k, off + b)
+        # snare: 4, 12 (beats 2 and 4)
+        for b in [4, 12]:
+            place(s * 0.8, off + b)
+        # closed hat on every other 16th
+        for b in range(0, 16, 2):
+            place(ch * 0.4, off + b)
+        # open hat on offbeats
+        for b in [2, 6, 14]:
+            place(oh * 0.3, off + b)
+        # cowbell accent
+        place(cb * 0.3, off + 8)
+
+    return Echo(delay_time=step * 3, repeats=2, decay=0.3, wet=0.15)(result)
+
+
+# ---------------------------------------------------------------------------
+# 16. TR-909 drum machine
+# ---------------------------------------------------------------------------
+
+
+def tr909_kick():
+    """909 kick: punchier than 808 — shorter pitch sweep, harder attack."""
+    import numpy as np
+    dur = 0.35
+    n = int(dur * SAMPLE_RATE)
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    # faster sweep, starts higher for more punch
+    pitch_sig = Signal(np.float32(50.0 + 200.0 * np.exp(-t * 55.0)))
+    body = Oscillator("sine").at(pitch_sig).render(dur)
+    amp = Envelope([
+        Segment(0.002, 0.0, 1.0, curve=-6),
+        Segment(0.30, 1.0, 0.0, curve=3),
+    ])
+    # harder click transient
+    click_env = Envelope([Segment(0.002, 1.0, 0.0, curve=-8)])
+    click = click_env.apply(WhiteNoise().render(dur)) * 0.3
+    return Clip(threshold=0.9)(amp.apply(body) + click)
+
+
+def tr909_snare():
+    """909 snare: sine body + aggressive noise — more bite than 808."""
+    dur = 0.2
+    import numpy as np
+    n = int(dur * SAMPLE_RATE)
+    t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
+    pitch_sig = Signal(np.float32(200.0 + 60.0 * np.exp(-t * 60.0)))
+    body_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-6),
+        Segment(dur - 0.001, 1.0, 0.0, curve=2),
+    ])
+    body = body_env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    # the 909 noise is brighter and more prominent
+    noise_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur * 0.7, 1.0, 0.15, curve=2),
+        Segment(dur * 0.3 - 0.001, 0.15, 0.0, curve=1),
+    ])
+    noise = noise_env.apply(
+        HighPassFilter(3000)(WhiteNoise().render(dur))
+    )
+    return body * 0.5 + noise * 0.6
+
+
+def tr909_hihat(open=False):
+    """909 hi-hat: six square oscillators at metallic ratios — brighter than 808."""
+    dur = 0.4 if open else 0.04
+    # 909 uses similar metallic oscillator approach but different tuning
+    freqs = [205.3, 304.4, 369.6, 522.7, 540.5, 811.2]
+    metal = sum(
+        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        for f in freqs
+    )
+    # 909 hats are brighter — higher filter cutoff
+    filtered = (HighPassFilter(9000) | BandPassFilter(9000, 14000))(metal)
+    if open:
+        env = Envelope([
+            Segment(0.001, 0.0, 1.0, curve=-4),
+            Segment(dur * 0.6, 1.0, 0.3, curve=1),
+            Segment(dur * 0.4 - 0.001, 0.3, 0.0, curve=2),
+        ])
+    else:
+        env = Envelope([
+            Segment(0.001, 0.0, 1.0, curve=-6),
+            Segment(dur - 0.001, 1.0, 0.0, curve=-4),
+        ])
+    return env.apply(filtered) * 0.5
+
+
+def tr909_clap():
+    """909 clap: tighter bursts than 808 with built-in room ambience."""
+    import numpy as np
+    burst_dur = 0.008
+    gap = 0.003
+    tail_dur = 0.14
+    total = burst_dur * 4 + gap * 3 + tail_dur
+    result = Signal.silence(total)
+    burst_env = Envelope([
+        Segment(0.0005, 0.0, 1.0, curve=-6),
+        Segment(burst_dur - 0.0005, 1.0, 0.0, curve=-3),
+    ])
+    for i in range(4):
+        offset = int((burst_dur + gap) * i * SAMPLE_RATE)
+        burst = burst_env.apply(
+            BandPassFilter(1000, 4000)(WhiteNoise().render(burst_dur))
+        )
+        end = min(len(result.data), offset + len(burst.data))
+        result.data[offset:end] += burst.data[:end - offset] * 0.8
+    tail_start = int((burst_dur + gap) * 3 * SAMPLE_RATE)
+    tail_env = Envelope([
+        Segment(0.003, 0.7, 1.0, curve=-2),
+        Segment(tail_dur - 0.003, 1.0, 0.0, curve=3),
+    ])
+    tail = tail_env.apply(
+        BandPassFilter(1000, 5000)(WhiteNoise().render(tail_dur))
+    )
+    end = min(len(result.data), tail_start + len(tail.data))
+    result.data[tail_start:end] += tail.data[:end - tail_start] * 0.5
+    return SimpleReverb(room_size=0.2, wet=0.3)(result)
+
+
+def tr909_ride(dur=0.6):
+    """909 ride cymbal: metallic oscillators with longer decay."""
+    freqs = [205.3, 304.4, 369.6, 522.7, 540.5, 811.2, 1043.0]
+    metal = sum(
+        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        for f in freqs
+    )
+    filtered = (HighPassFilter(5000) | BandPassFilter(6000, 11000))(metal)
+    env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur * 0.3, 1.0, 0.4, curve=1),
+        Segment(dur * 0.7 - 0.001, 0.4, 0.0, curve=2),
+    ])
+    return env.apply(filtered) * 0.35
+
+
+def tr909_pattern(bpm=130):
+    """Classic four-on-the-floor 909 pattern: kick every beat, snare on 2/4,
+    hats driving 16ths."""
+    step = 60.0 / bpm / 4  # 16th note
+    bars = 2
+    total = step * 16 * bars
+    result = Signal.silence(total)
+
+    k = tr909_kick()
+    s = tr909_snare()
+    ch = tr909_hihat(open=False)
+    oh = tr909_hihat(open=True)
+    cl = tr909_clap()
+    ride = tr909_ride()
+
+    def place(sig, beat_16th, vol=1.0):
+        n = int(beat_16th * step * SAMPLE_RATE)
+        end = min(len(result.data), n + len(sig.data))
+        result.data[n:end] += sig.data[:end - n] * vol
+
+    for bar in range(bars):
+        off = bar * 16
+        # four-on-the-floor kick
+        for b in [0, 4, 8, 12]:
+            place(k, off + b)
+        # clap on 2 and 4
+        for b in [4, 12]:
+            place(cl, off + b, 0.7)
+        # snare ghost notes
+        for b in [7, 15]:
+            place(s, off + b, 0.35)
+        # closed hats on 16ths, open hat for offbeat accents
+        for b in range(16):
+            if b in [2, 6, 10, 14]:
+                place(oh, off + b, 0.25)
+            else:
+                place(ch, off + b, 0.4)
+        # ride accent
+        place(ride, off + 0, 0.25)
+        place(ride, off + 8, 0.2)
+
+    return Limiter(ceiling_db=-1.5)(result)
+
+
+# ---------------------------------------------------------------------------
+# 17. 808/909 v2 — pure pysynth (no numpy), for A/B comparison
+# ---------------------------------------------------------------------------
+# The v1 functions use raw numpy for exponential pitch sweeps and manual
+# data[] splicing.  These v2 variants use only Envelope, Segment, and Signal
+# arithmetic so you can hear whether the Segment curve parameter is a
+# sufficient substitute.
+
+
+def tr808_kick_v2(decay=0.7):
+    """v2: pitch sweep via Envelope instead of np.exp."""
+    dur = 0.05 + decay
+    # Segment(dur, start=1, end=0, curve=5) gives a fast-decaying convex curve.
+    # Scale it: * 115 + 45 → sweeps from 160 Hz down to 45 Hz.
+    pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-20)]).render(dur) * 115.0 + 45.0
+    body = Oscillator("sine").at(pitch_sig).render(dur)
+    amp = Envelope([
+        Segment(0.004, 0.0, 1.0, curve=-4),
+        Segment(decay, 1.0, 0.0, curve=4),
+    ])
+    click_env = Envelope([Segment(0.003, 1.0, 0.0, curve=-6)])
+    click = click_env.apply(Oscillator("sine").at(160).render(dur)) * 0.6
+    return amp.apply(body) + click
+
+
+def tr808_snare_v2():
+    """v2: pitch drop via Envelope instead of np.exp."""
+    dur = 0.25
+    pitch1 = Envelope([Segment(dur, 1.0, 0.0, curve=-6)]).render(dur) * 40.0 + 180.0
+    pitch2 = Envelope([Segment(dur, 1.0, 0.0, curve=-6)]).render(dur) * 40.0 + 330.0
+    body_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur - 0.001, 1.0, 0.0, curve=3),
+    ])
+    body = body_env.apply(
+        Oscillator("sine").at(pitch1).render(dur) * 0.5
+        + Oscillator("sine").at(pitch2).render(dur) * 0.3
+    )
+    noise_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur - 0.001, 1.0, 0.0, curve=2),
+    ])
+    noise = noise_env.apply(
+        BandPassFilter(2000, 9000)(WhiteNoise().render(dur))
+    )
+    return body * 0.6 + noise * 0.5
+
+
+def tr808_clap_v2():
+    """v2: clap bursts via Sequencer gate pulses instead of data[] splicing.
+
+    Uses a StepSequencer with very short steps to generate the burst timing,
+    then triggers noise through an envelope.  The tail is a separate layer
+    mixed on top."""
+    burst_dur = 0.012
+    gap = 0.005
+    tail_dur = 0.18
+    step_len = burst_dur + gap
+    n_bursts = 4
+
+    # 4 gate pulses via StepSequencer, each burst_dur long with a gap
+    burst_steps = [Step(1.0, gate_length=burst_dur / step_len)] * n_bursts
+    bpm = 60.0 / step_len  # one step = step_len seconds
+    _, gate = StepSequencer(burst_steps, bpm=bpm, step_length=1.0).cv()
+
+    # trigger filtered noise bursts from the gate
+    burst_env = adsr(attack=0.001, decay=burst_dur - 0.002, sustain=0.0,
+                     sustain_level=0.0, release=0.001)
+    bursts_dur = gate.duration
+    noise_src = BandPassFilter(1200, 3500)(WhiteNoise().render(bursts_dur))
+    bursts = noise_src * burst_env.trigger(gate) * 0.7
+
+    # reverberant noise tail, rendered separately and mixed
+    tail_env = Envelope([
+        Segment(0.005, 0.8, 1.0, curve=-2),
+        Segment(tail_dur - 0.005, 1.0, 0.0, curve=3),
+    ])
+    tail = tail_env.apply(
+        BandPassFilter(800, 3500)(WhiteNoise().render(tail_dur))
+    ) * 0.5
+
+    # mix: bursts then tail starts at the last burst
+    total = bursts_dur + tail_dur
+    result = Signal.silence(total)
+    # layer bursts at start
+    result = result + bursts
+    # layer tail starting near the last burst — use silence padding
+    tail_offset = step_len * (n_bursts - 1)
+    tail_padded = Signal.silence(tail_offset) + tail
+    result = result + tail_padded
+    return result
+
+
+def tr808_tom_v2(pitch=100, decay=0.3):
+    """v2: pitch sweep via Envelope instead of np.exp."""
+    dur = decay + 0.01
+    # sweep from pitch*1.5 down to pitch
+    pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-8)]).render(dur) * (pitch * 0.5) + pitch
+    env = Envelope([
+        Segment(0.002, 0.0, 1.0, curve=-4),
+        Segment(decay, 1.0, 0.0, curve=3),
+    ])
+    return env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+
+
+def tr909_kick_v2():
+    """v2: pitch sweep via Envelope instead of np.exp."""
+    dur = 0.35
+    pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-15)]).render(dur) * 200.0 + 50.0
+    body = Oscillator("sine").at(pitch_sig).render(dur)
+    amp = Envelope([
+        Segment(0.002, 0.0, 1.0, curve=-6),
+        Segment(0.30, 1.0, 0.0, curve=3),
+    ])
+    click_env = Envelope([Segment(0.002, 1.0, 0.0, curve=-8)])
+    click = click_env.apply(WhiteNoise().render(dur)) * 0.3
+    return Clip(threshold=0.9)(amp.apply(body) + click)
+
+
+def tr909_snare_v2():
+    """v2: pitch drop via Envelope instead of np.exp."""
+    dur = 0.2
+    pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-10)]).render(dur) * 60.0 + 200.0
+    body_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-6),
+        Segment(dur - 0.001, 1.0, 0.0, curve=2),
+    ])
+    body = body_env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    noise_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(dur * 0.7, 1.0, 0.15, curve=2),
+        Segment(dur * 0.3 - 0.001, 0.15, 0.0, curve=1),
+    ])
+    noise = noise_env.apply(
+        HighPassFilter(3000)(WhiteNoise().render(dur))
+    )
+    return body * 0.5 + noise * 0.6
+
+
+def tr909_clap_v2():
+    """v2: clap bursts via StepSequencer instead of data[] splicing."""
+    burst_dur = 0.008
+    gap = 0.003
+    tail_dur = 0.14
+    step_len = burst_dur + gap
+    n_bursts = 4
+
+    burst_steps = [Step(1.0, gate_length=burst_dur / step_len)] * n_bursts
+    bpm = 60.0 / step_len
+    _, gate = StepSequencer(burst_steps, bpm=bpm, step_length=1.0).cv()
+
+    burst_env = adsr(attack=0.0005, decay=burst_dur - 0.001, sustain=0.0,
+                     sustain_level=0.0, release=0.0005)
+    bursts_dur = gate.duration
+    noise_src = BandPassFilter(1000, 4000)(WhiteNoise().render(bursts_dur))
+    bursts = noise_src * burst_env.trigger(gate) * 0.8
+
+    tail_env = Envelope([
+        Segment(0.003, 0.7, 1.0, curve=-2),
+        Segment(tail_dur - 0.003, 1.0, 0.0, curve=3),
+    ])
+    tail = tail_env.apply(
+        BandPassFilter(1000, 5000)(WhiteNoise().render(tail_dur))
+    ) * 0.5
+
+    total = bursts_dur + tail_dur
+    result = Signal.silence(total)
+    result = result + bursts
+    tail_offset = step_len * (n_bursts - 1)
+    tail_padded = Signal.silence(tail_offset) + tail
+    result = result + tail_padded
+    return SimpleReverb(room_size=0.2, wet=0.3)(result)
+
+
+# ---------------------------------------------------------------------------
+# 18. 808/909 v3 — using Signal.shift() for event placement
+# ---------------------------------------------------------------------------
+# v1 used data[] splicing, v2 used StepSequencer (verbose).
+# v3 uses Signal.shift(seconds) + addition — the natural Signal algebra approach.
+
+
+def tr808_clap_v3():
+    """v3: clap bursts placed with shift() + addition."""
+    burst_dur = 0.012
+    gap = 0.005
+    tail_dur = 0.18
+    step = burst_dur + gap
+    burst_env = Envelope([
+        Segment(0.001, 0.0, 1.0, curve=-4),
+        Segment(burst_dur - 0.001, 1.0, 0.0, curve=-2),
+    ])
+    burst = burst_env.apply(
+        BandPassFilter(1200, 3500)(WhiteNoise().render(burst_dur))
+    ) * 0.7
+    tail_env = Envelope([
+        Segment(0.005, 0.8, 1.0, curve=-2),
+        Segment(tail_dur - 0.005, 1.0, 0.0, curve=3),
+    ])
+    tail = tail_env.apply(
+        BandPassFilter(800, 3500)(WhiteNoise().render(tail_dur))
+    ) * 0.5
+    return sum(burst.shift(i * step) for i in range(4)) + tail.shift(3 * step)
+
+
+def tr909_clap_v3():
+    """v3: 909 clap with shift()."""
+    burst_dur = 0.008
+    gap = 0.003
+    tail_dur = 0.14
+    step = burst_dur + gap
+    burst_env = Envelope([
+        Segment(0.0005, 0.0, 1.0, curve=-6),
+        Segment(burst_dur - 0.0005, 1.0, 0.0, curve=-3),
+    ])
+    burst = burst_env.apply(
+        BandPassFilter(1000, 4000)(WhiteNoise().render(burst_dur))
+    ) * 0.8
+    tail_env = Envelope([
+        Segment(0.003, 0.7, 1.0, curve=-2),
+        Segment(tail_dur - 0.003, 1.0, 0.0, curve=3),
+    ])
+    tail = tail_env.apply(
+        BandPassFilter(1000, 5000)(WhiteNoise().render(tail_dur))
+    ) * 0.5
+    return SimpleReverb(room_size=0.2, wet=0.3)(
+        sum(burst.shift(i * step) for i in range(4)) + tail.shift(3 * step)
+    )
+
+
+def tr808_pattern_v3(bpm=126):
+    """v3: 808 pattern using shift() instead of data[] splicing."""
+    step = 60.0 / bpm / 2
+    k = tr808_kick()
+    s = tr808_snare_v2()
+    ch = tr808_hihat(open=False)
+    oh = tr808_hihat(open=True)
+    cb = tr808_cowbell()
+
+    def at(sig, *beats):
+        return sum(sig.shift(b * step) for b in beats)
+
+    result = (
+        at(k, 0, 3, 10, 16, 19, 26)
+        + at(s * 0.8, 4, 12, 20, 28)
+        + at(ch * 0.4, *range(0, 32, 2))
+        + at(oh * 0.3, 2, 6, 14, 18, 22, 30)
+        + at(cb * 0.3, 8, 24)
+    )
+    return Echo(delay_time=step * 3, repeats=2, decay=0.3, wet=0.15)(result)
+
+
+def tr909_pattern_v3(bpm=130):
+    """v3: 909 pattern using shift() instead of data[] splicing."""
+    step = 60.0 / bpm / 4
+    k = tr909_kick_v2()
+    s = tr909_snare_v2()
+    ch = tr909_hihat(open=False)
+    oh = tr909_hihat(open=True)
+    cl = tr909_clap_v3()
+    ride = tr909_ride()
+
+    def at(sig, *beats):
+        return sum(sig.shift(b * step) for b in beats)
+
+    offbeat = [2, 6, 10, 14, 18, 22, 26, 30]
+    onbeat = [b for b in range(32) if b not in offbeat]
+    result = (
+        at(k, 0, 4, 8, 12, 16, 20, 24, 28)
+        + at(cl * 0.7, 4, 12, 20, 28)
+        + at(s * 0.35, 7, 15, 23, 31)
+        + at(ch * 0.4, *onbeat)
+        + at(oh * 0.25, *offbeat)
+        + at(ride * 0.25, 0, 16)
+        + at(ride * 0.2, 8, 24)
+    )
+    return Limiter(ceiling_db=-1.5)(result)
+
+
+def drum_pattern_v3():
+    """v3 of drum_pattern (section 8) — rewritten with shift()."""
+    k, s, h = kick(), snare(), hihat()
+    step = 0.5  # 120 bpm quarter note
+
+    def at(sig, *beats):
+        return sum(sig.shift(b * step) for b in beats)
+
+    return (
+        at(h * 0.5, 0, 1, 2, 3)
+        + at(k, 0, 2)
+        + at(s, 1, 3)
+    )
