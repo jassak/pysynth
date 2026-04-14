@@ -117,20 +117,43 @@ class Signal:
         if blocking:
             sd.wait()
 
-    def plot(self, max_duration: float | None = None) -> None:
-        """Plot the waveform using matplotlib."""
+    def plot(self, max_duration: float | None = None, ax=None) -> None:
+        """Plot the waveform using matplotlib.
+
+        For stereo signals, two axes are drawn: left channel on top, right
+        channel on bottom.  When *ax* is ``None`` a new figure is created and
+        ``plt.show()`` is called.  For stereo, pass a sequence of two
+        ``Axes`` objects; for mono, pass a single ``Axes``.
+        """
         data = self.data
         if max_duration is not None:
             n = int(max_duration * self.sample_rate)
             data = data[:n]
         t = np.arange(len(data)) / self.sample_rate
-        plt.figure(figsize=(10, 3))
-        plt.plot(t, data, linewidth=0.5)
-        plt.xlabel("Time (s)")
-        plt.ylabel("Amplitude")
-        plt.title(repr(self))
-        plt.tight_layout()
-        plt.show()
+        stereo = data.ndim == 2 and data.shape[1] == 2
+
+        if ax is None:
+            if stereo:
+                fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
+            else:
+                fig, axes = plt.subplots(figsize=(10, 3))
+                axes = [axes]
+            show = True
+        else:
+            axes = list(ax) if stereo else [ax]
+            show = False
+
+        channels = [data[:, 0], data[:, 1]] if stereo else [data]
+        labels = ["Left", "Right"] if stereo else ["Amplitude"]
+        for channel_data, axis, ylabel in zip(channels, axes, labels):
+            axis.plot(t, channel_data, linewidth=0.5)
+            axis.set_ylabel(ylabel)
+        axes[-1].set_xlabel("Time (s)")
+        axes[0].set_title(repr(self))
+
+        if show:
+            plt.tight_layout()
+            plt.show()
 
     def __repr__(self) -> str:
         channels = "mono" if self.n_channels == 1 else f"{self.n_channels}ch"

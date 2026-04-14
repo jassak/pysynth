@@ -266,7 +266,7 @@ class Scale:
         folded.sort()
         return Scale(self._tonic, folded, unit="ratio", period=self._period)
 
-    def plot(self, show: bool = True):
+    def plot(self, ax=None):
         """Visualise the scale.
 
         Non-periodic scales are drawn as a log-frequency line with each
@@ -277,14 +277,9 @@ class Scale:
 
         Parameters
         ----------
-        show:
-            Call ``plt.show()`` after drawing (default True). Pass
-            ``False`` to get the ``Figure`` back for further customisation
-            or saving.
-
-        Returns
-        -------
-        matplotlib.figure.Figure
+        ax:
+            An existing ``matplotlib.axes.Axes`` to draw into. If ``None``
+            (default), a new figure is created and ``plt.show()`` is called.
         """
         import matplotlib.pyplot as plt
         import numpy as np
@@ -294,7 +289,13 @@ class Scale:
 
         if self._period is None:
             # ── Line plot (linear / non-periodic) ──────────────────────────
-            fig, ax = plt.subplots(figsize=(max(6, len(pitches) * 0.8), 3))
+            if ax is None:
+                fig, ax = plt.subplots(figsize=(max(6, len(pitches) * 0.8), 3))
+                show = True
+            else:
+                ax = ax
+                fig = ax.get_figure()
+                show = False
             ax.set_xscale("log")
 
             ax.plot(hz_vals, [0.0] * len(hz_vals), color="steelblue",
@@ -330,7 +331,13 @@ class Scale:
             xs = [math.sin(a) for a in angles]
             ys = [math.cos(a) for a in angles]
 
-            fig, ax = plt.subplots(figsize=(6, 6))
+            if ax is None:
+                fig, ax = plt.subplots(figsize=(6, 6))
+                show = True
+            else:
+                ax = ax
+                fig = ax.get_figure()
+                show = False
             ax.set_aspect("equal")
 
             # Outer circle
@@ -369,7 +376,6 @@ class Scale:
         fig.tight_layout()
         if show:
             plt.show()
-        return fig
 
     def preview(self, bpm: float = 120.0, blocking: bool = True) -> None:
         """Play the scale degrees ascending through the default audio device."""

@@ -184,7 +184,7 @@ class Spectrum:
     # Display                                                              #
     # ------------------------------------------------------------------ #
 
-    def plot(self) -> None:
+    def plot(self, ax=None) -> None:
         """Plot the spectrogram (magnitude in dB)."""
         mag = self.magnitude
         mag_db = 20.0 * np.log10(np.maximum(mag, 1e-10))
@@ -192,14 +192,21 @@ class Spectrum:
         times = np.arange(self.n_frames) * self.hop_size / self.sample_rate
         freqs = self.frequencies
 
-        plt.figure(figsize=(10, 4))
-        plt.pcolormesh(times, freqs, mag_db.T, shading="auto", cmap="magma")
-        plt.ylabel("Frequency (Hz)")
-        plt.xlabel("Time (s)")
-        plt.title(repr(self))
-        plt.colorbar(label="dB")
-        plt.tight_layout()
-        plt.show()
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 4))
+            show = True
+        else:
+            ax = ax
+            fig = ax.get_figure()
+            show = False
+        mesh = ax.pcolormesh(times, freqs, mag_db.T, shading="auto", cmap="magma")
+        ax.set_ylabel("Frequency (Hz)")
+        ax.set_xlabel("Time (s)")
+        ax.set_title(repr(self))
+        fig.colorbar(mesh, ax=ax, label="dB")
+        if show:
+            plt.tight_layout()
+            plt.show()
 
     def __repr__(self) -> str:
         return (
