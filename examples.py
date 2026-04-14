@@ -18,7 +18,7 @@ from pysynth import ( SAMPLE_RATE, Signal, Generator, Oscillator, WhiteNoise,
     Echo, Tanh, Clip, Overdrive, Pitch, Note, Scale, Sequencer, Step, StepSequencer,
     Arpeggiator, Mixer, pan, stft, freeze, smear, shift_bins, cross_synthesize,
     pitch_shift, SpectralFreeze, SpectralSmear, PitchShift, Vocoder, ConvolutionReverb,
-    DrumMachine, Percussion,
+    DrumMachine, Percussion, PolymetricSequencer,
 )
 
 DUR = 3.0
@@ -1411,3 +1411,95 @@ def x0x_pattern(bpm=138):
     )
     step = 60.0 / bpm / 4
     return Echo(delay_time=step * 3, repeats=3, decay=0.4, wet=0.25)(audio)
+
+
+# ---------------------------------------------------------------------------
+# 20. Polymetric sequencer
+# ---------------------------------------------------------------------------
+
+
+def polymetric_3_4(bpm=90):
+    """3-against-4 polyrhythm: bass cycles in 3, melody cycles in 4."""
+    scale = Scale(220, [1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8], period=2.0)
+
+    seq = PolymetricSequencer({
+        "melody": [0, 2, 4, 6],            # 4 steps
+        "bass":   [0, None, 4],            # 3 steps
+    }, scale=scale, bpm=bpm,
+       step_length=1.0,                    # quarter note grid for both
+       gate_length=0.75,
+    )
+    signals = seq.cv(beats=12)             # LCM(3,4)=12 beats to realign
+
+    melody_p, melody_g = signals["melody"]
+    bass_p, bass_g = signals["bass"]
+    dur = melody_p.duration
+
+    melody_audio = Oscillator("triangle").at(melody_p).render(dur)
+    melody_audio = melody_audio * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(melody_g) * 0.4
+
+    bass_gen = Oscillator("saw") + Oscillator("saw", ratio=2) * 0.3
+    bass_audio = bass_gen.at(bass_p * 0.5).render(dur)
+    bass_audio = bass_audio * adsr(0.01, 0.15, 0.4, 0.6, 0.15).trigger(bass_g) * 0.5
+    bass_audio = LowPassFilter(800)(bass_audio)
+
+    return DatorroReverb(decay=0.4, wet=0.2)(melody_audio + bass_audio)
+
+
+def polymetric_phasing(bpm=120):
+    """Steve Reich-style phasing: same melody on two tracks at slightly
+    different step rates.  They start aligned and gradually drift."""
+    scale = Scale(330, [1, 9/8, 5/4, 3/2, 5/3], period=2.0)
+    pattern = [0, 2, 4, 3, 1]
+
+    seq = PolymetricSequencer({
+        "voice_a": pattern,
+        "voice_b": pattern,
+    }, scale=scale, bpm=bpm,
+       step_length=0.25,
+       step_lengths={"voice_b": 0.255},     # slightly longer step → drifts
+       gate_length=0.7,
+    )
+    signals = seq.cv(beats=64)
+
+    osc = Oscillator('sine')
+    env = adsr(0.01, 0.02, 0.15, 0.6, 0.01)
+    pitch_a, gate_a = signals["voice_a"]
+    pitch_b, gate_b = signals["voice_b"]
+    audio_a = osc.at(pitch_a).render(pitch_a.duration) * env.trigger(gate_a)
+    audio_b = osc.at(pitch_b).render(pitch_b.duration) * env.trigger(gate_b)
+    audio_a = pan(audio_a, -0.3)
+    audio_b = pan(audio_b, 0.3)
+    audio = audio_a * 0.35 + audio_b * 0.35
+
+    return DatorroReverb(decay=0.6, wet=0.8)(audio)
+
+
+def polymetric_notation(bpm=100):
+    """Polymetric pattern using string notation — 5 against 4."""
+    scale = Scale(220, [1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8], period=2.0)
+
+    seq = PolymetricSequencer.from_notation({
+        "high":  "4 . 6 . 5",             # 5 steps
+        "low":   "0 . 2 .",               # 4 steps
+    }, scale=scale, bpm=bpm,
+       step_length=0.5,
+       gate_length=0.7,
+    )
+    signals = seq.cv(beats=20)             # LCM(5*0.5, 4*0.5)=LCM(2.5,2)=10 beats, x2
+
+    high_p, high_g = signals["high"]
+    low_p, low_g = signals["low"]
+    dur = high_p.duration
+
+    high_audio = Oscillator("sine").at(high_p).render(dur)
+    high_audio = high_audio * adsr(0.005, 0.1, 0.2, 0.5, 0.08).trigger(high_g) * 0.35
+
+    low_gen = Oscillator("triangle") + Oscillator("triangle", ratio=2) * 0.2
+    low_audio = low_gen.at(low_p * 0.5).render(dur)
+    low_audio = low_audio * adsr(0.01, 0.15, 0.3, 0.7, 0.12).trigger(low_g) * 0.45
+
+    mx = Mixer()
+    mx.add_track(high_audio, volume=0.7, position=0.4)
+    mx.add_track(low_audio, volume=0.8, position=-0.4)
+    return DatorroReverb(decay=0.5, wet=0.25)(mx.render())

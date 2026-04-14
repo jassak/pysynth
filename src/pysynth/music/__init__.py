@@ -6,6 +6,7 @@ from pysynth.music.arpeggiator import Arpeggiator
 from pysynth.music.poly import PolySequencer
 from pysynth.music.drum_machine import DrumMachine
 from pysynth.music.percussion import Percussion
+from pysynth.music.polymetric import PolymetricSequencer
 
 __all__ = [
     "Pitch",
@@ -18,4 +19,5 @@ __all__ = [
     "PolySequencer",
     "DrumMachine",
     "Percussion",
+    "PolymetricSequencer",
 ]
