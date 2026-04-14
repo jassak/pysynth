@@ -258,6 +258,53 @@ class TestSignalShift:
         np.testing.assert_allclose(mixed.data, [1.0, 3.0, 2.0], atol=1e-6)
 
 
+class TestConcat:
+    def test_concat_two_signals(self):
+        a = _sig([1.0, 2.0])
+        b = _sig([3.0, 4.0, 5.0])
+        c = Signal.concat(a, b)
+        np.testing.assert_allclose(c.data, [1.0, 2.0, 3.0, 4.0, 5.0], atol=1e-6)
+        assert c.duration == pytest.approx(a.duration + b.duration, abs=1e-6)
+
+    def test_concat_multiple(self):
+        a = _sig([1.0])
+        b = _sig([2.0])
+        c = _sig([3.0])
+        result = Signal.concat(a, b, c)
+        np.testing.assert_allclose(result.data, [1.0, 2.0, 3.0], atol=1e-6)
+
+    def test_concat_does_not_mutate(self):
+        a = _sig([1.0, 2.0])
+        b = _sig([3.0, 4.0])
+        a_orig = a.data.copy()
+        b_orig = b.data.copy()
+        _ = Signal.concat(a, b)
+        np.testing.assert_array_equal(a.data, a_orig)
+        np.testing.assert_array_equal(b.data, b_orig)
+
+    def test_concat_mismatched_sample_rate(self):
+        a = Signal(np.array([1.0]), sample_rate=44100)
+        b = Signal(np.array([2.0]), sample_rate=22050)
+        with pytest.raises(ValueError, match="sample rates"):
+            Signal.concat(a, b)
+
+    def test_concat_mono_stereo(self):
+        m = _sig([1.0, 2.0])
+        s = _stereo([3.0, 4.0], [5.0, 6.0])
+        result = Signal.concat(m, s)
+        assert result.n_channels == 2
+        assert len(result.data) == 4
+
+    def test_concat_preserves_sample_rate(self):
+        a = Signal(np.array([1.0]), sample_rate=22050)
+        b = Signal(np.array([2.0]), sample_rate=22050)
+        assert Signal.concat(a, b).sample_rate == 22050
+
+    def test_concat_requires_two_signals(self):
+        with pytest.raises(ValueError, match="at least two"):
+            Signal.concat(_sig([1.0]))
+
+
 class TestSignalImmutability:
     def test_add_does_not_mutate(self):
         a = _sig([1.0, 2.0])

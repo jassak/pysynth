@@ -184,6 +184,33 @@ class Signal:
         n = int(duration * sample_rate)
         return cls(np.zeros(n, dtype=np.float32), sample_rate)
 
+    @classmethod
+    def concat(cls, *signals: Signal) -> Signal:
+        """Concatenate signals sequentially in time.
+
+        ::
+
+            drums = Signal.concat(intro, verse, chorus)
+        """
+        if len(signals) < 2:
+            raise ValueError("concat requires at least two signals")
+        sr = signals[0].sample_rate
+        for s in signals[1:]:
+            if s.sample_rate != sr:
+                raise ValueError(
+                    f"Cannot concatenate signals with different sample rates: "
+                    f"{sr} vs {s.sample_rate}"
+                )
+        stereo = any(s.data.ndim == 2 for s in signals)
+        ch = max(s.data.shape[1] for s in signals if s.data.ndim == 2) if stereo else 0
+        arrays = []
+        for s in signals:
+            d = s.data
+            if stereo and d.ndim == 1:
+                d = np.column_stack([d] * ch)
+            arrays.append(d)
+        return cls(np.concatenate(arrays), sr)
+
 
 # ------------------------------------------------------------------ #
 # Effect base class                                                    #
