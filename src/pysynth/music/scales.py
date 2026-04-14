@@ -379,9 +379,9 @@ class Scale:
         from pysynth.music.sequencer import Sequencer
 
         notes = [Note(self[i], 0.5) for i in range(len(self))]
-        pitch, gate = Sequencer(notes, bpm=bpm).cv()
+        pitch, gate = Sequencer(notes, bpm=bpm, retrigger_gap=0.01).cv()
         audio = Oscillator("sine").at(pitch).render(pitch.duration)
-        env = adsr(0.01, 0.05, 0.0, 0.8, 0.1).trigger(gate)
+        env = adsr(0.01, 0.02, 0.15, 0.6, 0.01).trigger(gate)
         (audio * env * 0.5).play(blocking=blocking)
 
     def __repr__(self) -> str:
