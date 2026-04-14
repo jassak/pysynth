@@ -4,6 +4,8 @@ from pysynth.music.sequencer import Sequencer
 from pysynth.music.step_sequencer import Step, StepSequencer
 from pysynth.music.arpeggiator import Arpeggiator
 from pysynth.music.poly import PolySequencer
+from pysynth.music.drum_machine import DrumMachine
+from pysynth.music.percussion import Percussion
 
 __all__ = [
     "Pitch",
@@ -14,4 +16,6 @@ __all__ = [
     "StepSequencer",
     "Arpeggiator",
     "PolySequencer",
+    "DrumMachine",
+    "Percussion",
 ]

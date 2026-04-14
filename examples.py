@@ -18,6 +18,7 @@ from pysynth import ( SAMPLE_RATE, Signal, Generator, Oscillator, WhiteNoise,
     Echo, Tanh, Clip, Overdrive, Pitch, Note, Scale, Sequencer, Step, StepSequencer,
     Arpeggiator, Mixer, pan, stft, freeze, smear, shift_bins, cross_synthesize,
     pitch_shift, SpectralFreeze, SpectralSmear, PitchShift, Vocoder, ConvolutionReverb,
+    DrumMachine, Percussion,
 )
 
 DUR = 3.0
@@ -1340,3 +1341,73 @@ def drum_pattern_v3():
         + at(k, 0, 2)
         + at(s, 1, 3)
     )
+
+
+# ---------------------------------------------------------------------------
+# 19. DrumMachine + Percussion
+# ---------------------------------------------------------------------------
+
+
+def tr808_dm(bpm=126):
+    """808 boom-bap pattern using DrumMachine + Percussion."""
+    dm = DrumMachine({
+        "kick":  [1,0,0,1, 0,0,0,0, 0,0,1,0, 0,0,0,0],
+        "snare": [0,0,0,0, .8,0,0,0, 0,0,0,0, .8,0,0,0],
+        "ch":    [.4,0,.4,0,.4,0,.4,0,.4,0,.4,0,.4,0,.4,0],
+        "oh":    [0,0,.3,0, 0,0,.3,0, 0,0,0,0, 0,0,.3,0],
+        "bell":  [0,0,0,0, 0,0,0,0, .3,0,0,0, 0,0,0,0],
+    }, bpm=bpm, gate_lengths={"kick": 0.8, "ch": 0.3, "oh": 0.6})
+    gates = dm.cv(repeats=2)
+
+    audio = (
+        Percussion(tr808_kick_v2()).trigger(gates["kick"])
+        + Percussion(tr808_snare_v2()).trigger(gates["snare"])
+        + Percussion(tr808_hihat(open=False)).trigger(gates["ch"])
+        + Percussion(tr808_hihat(open=True)).trigger(gates["oh"])
+        + Percussion(tr808_cowbell()).trigger(gates["bell"])
+    )
+    step = 60.0 / bpm / 4
+    return Echo(delay_time=step * 3, repeats=2, decay=0.3, wet=0.15)(audio)
+
+
+def tr909_dm(bpm=130):
+    """909 four-on-the-floor using DrumMachine + Percussion."""
+    dm = DrumMachine({
+        "kick":  [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
+        "clap":  [0,0,0,0, .7,0,0,0, 0,0,0,0, .7,0,0,0],
+        "snare": [0,0,0,0, 0,0,0,.35,0,0,0,0, 0,0,0,.35],
+        "ch":    [.4,.4,.4,.4,.4,.4,.4,.4,.4,.4,.4,.4,.4,.4,.4,.4],
+        "oh":    [0,0,.25,0,0,0,.25,0,0,0,.25,0,0,0,.25,0],
+        "ride":  [.25,0,0,0,0,0,0,0,.2,0,0,0,0,0,0,0],
+    }, bpm=bpm, gate_lengths={"kick": 0.8, "ch": 0.3, "oh": 0.5})
+    gates = dm.cv(repeats=2)
+
+    audio = (
+        Percussion(tr909_kick_v2()).trigger(gates["kick"])
+        + Percussion(tr909_clap_v3()).trigger(gates["clap"])
+        + Percussion(tr909_snare_v2()).trigger(gates["snare"])
+        + Percussion(tr909_hihat(open=False)).trigger(gates["ch"])
+        + Percussion(tr909_hihat(open=True)).trigger(gates["oh"])
+        + Percussion(tr909_ride()).trigger(gates["ride"])
+    )
+    return Limiter(ceiling_db=-1.5)(audio)
+
+
+def x0x_pattern(bpm=138):
+    """Acid-tinged pattern defined with x0x string notation."""
+    dm = DrumMachine.from_x0x({
+        "kick":  "x---x---x---x---",
+        "snare": "----x-------x---",
+        "ch":    "x-x-x-x-x-x-x-x-",
+        "oh":    "--x---x---x---x-",
+    }, bpm=bpm, gate_lengths={"ch": 0.3, "oh": 0.5})
+    gates = dm.cv(repeats=4)
+
+    audio = (
+        Percussion(tr808_kick_v2()).trigger(gates["kick"])
+        + Percussion(tr808_snare_v2()).trigger(gates["snare"])
+        + Percussion(tr808_hihat(open=False)).trigger(gates["ch"])
+        + Percussion(tr808_hihat(open=True)).trigger(gates["oh"])
+    )
+    step = 60.0 / bpm / 4
+    return Echo(delay_time=step * 3, repeats=3, decay=0.4, wet=0.25)(audio)
