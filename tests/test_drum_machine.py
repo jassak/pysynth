@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pysynth._core import Signal
-from pysynth.music.drum_machine import DrumMachine
+from pysynth.instruments.drum_machine import DrumMachine
 
 
 SR = 1000  # low sample rate for fast tests

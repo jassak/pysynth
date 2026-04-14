@@ -68,7 +68,8 @@ class StepSequencer:
     Multiple StepSequencers can run in parallel to control different
     parameters (pitch, filter cutoff, resonance, …) over the same grid::
 
-        from pysynth.music import Scale, StepSequencer, Step
+        from pysynth.music import Scale
+        from pysynth.instruments import StepSequencer, Step
 
         scale = Scale(220, [1, 9/8, 5/4, 3/2])
 

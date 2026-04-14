@@ -382,7 +382,7 @@ class Scale:
         from pysynth.envelopes import adsr
         from pysynth.generators import Oscillator
         from pysynth.music.pitch import Note
-        from pysynth.music.sequencer import Sequencer
+        from pysynth.instruments.sequencer import Sequencer
 
         notes = [Note(self[i], 0.5) for i in range(len(self))]
         pitch, gate = Sequencer(notes, bpm=bpm, retrigger_gap=0.01).cv()

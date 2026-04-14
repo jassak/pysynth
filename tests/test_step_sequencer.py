@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pysynth._core import Signal
-from pysynth.music.step_sequencer import Step, StepSequencer
+from pysynth.instruments.step_sequencer import Step, StepSequencer
 
 
 SR = 1000

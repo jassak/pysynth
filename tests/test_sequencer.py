@@ -3,7 +3,7 @@ import pytest
 
 from pysynth._core import Signal
 from pysynth.music.pitch import Pitch, Note
-from pysynth.music.sequencer import Sequencer
+from pysynth.instruments.sequencer import Sequencer
 
 
 SR = 1000

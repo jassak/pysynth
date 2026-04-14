@@ -1,6 +1,6 @@
 from pysynth._core import SAMPLE_RATE, Signal
 from pysynth.music.pitch import Pitch, Note
-from pysynth.music.poly import PolySequencer
+from pysynth.instruments.poly import PolySequencer
 
 
 # Use a low sample rate for fast, readable tests

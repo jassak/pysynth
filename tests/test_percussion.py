@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pysynth._core import SAMPLE_RATE, Signal
-from pysynth.music.percussion import Percussion
+from pysynth.instruments.percussion import Percussion
 
 
 SR = 1000  # low sample rate for fast tests

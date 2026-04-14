@@ -5,7 +5,7 @@ from typing import Literal
 
 from pysynth._core import SAMPLE_RATE, Signal
 from pysynth.music.pitch import Note, Pitch
-from pysynth.music.sequencer import Sequencer
+from pysynth.instruments.sequencer import Sequencer
 
 
 Pattern = Literal["up", "down", "up_down", "down_up", "random"]

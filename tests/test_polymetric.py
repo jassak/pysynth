@@ -3,7 +3,7 @@ import pytest
 
 from pysynth._core import Signal
 from pysynth.music.scales import Scale
-from pysynth.music.polymetric import PolymetricSequencer
+from pysynth.instruments.polymetric import PolymetricSequencer
 
 
 SR = 1000  # low sample rate for fast tests

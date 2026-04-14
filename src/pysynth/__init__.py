@@ -8,8 +8,11 @@ from pysynth.effects import (
     Delay, Echo,
     Tanh, Clip, Overdrive,
 )
-from pysynth.music import (Pitch, Note, Scale, Sequencer, Step, StepSequencer,
-    Arpeggiator, PolySequencer, DrumMachine, Percussion, PolymetricSequencer)
+from pysynth.music import Pitch, Note, Scale
+from pysynth.instruments import (
+    Sequencer, Step, StepSequencer, Arpeggiator, PolySequencer,
+    DrumMachine, Percussion, PolymetricSequencer
+)
 from pysynth.mixing import Mixer, pan, play, render_to_wav
 from pysynth.spectral import (
     Spectrum, stft,

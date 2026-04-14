@@ -32,7 +32,8 @@ class Sequencer:
 
     Usage::
 
-        from pysynth.music import Scale, Note, Sequencer
+        from pysynth.music import Scale, Note
+        from pysynth.instruments import Sequencer
         from pysynth.generators import Oscillator
         from pysynth.envelopes import adsr
         from pysynth.effects import LowPassFilter
