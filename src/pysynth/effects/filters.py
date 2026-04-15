@@ -184,6 +184,10 @@ class LowPassFilter(Effect):
         ``Signal`` for a modulated filter sweep. When a Signal, uses a
         per-sample SVF (state variable filter) for smooth, artifact-free
         modulation.
+    order:
+        Filter order. Each unit adds 6 dB/oct of rolloff steepness, so
+        ``order=4`` (the default) gives a 24 dB/oct slope. Internally the SVF
+        engine cascades ``order // 2`` second-order stages.
     resonance:
         Resonance amount from 0.0 (Butterworth, no peak) to 1.0
         (self-oscillation). Accepts a constant ``float`` or a time-varying
@@ -218,6 +222,10 @@ class HighPassFilter(Effect):
     cutoff_hz:
         Cutoff frequency in Hz. Accepts a constant ``float`` or a time-varying
         ``Signal`` for a modulated filter sweep.
+    order:
+        Filter order. Each unit adds 6 dB/oct of rolloff steepness, so
+        ``order=4`` (the default) gives a 24 dB/oct slope. Internally the SVF
+        engine cascades ``order // 2`` second-order stages.
     resonance:
         Resonance amount from 0.0 (Butterworth, no peak) to 1.0
         (self-oscillation). Accepts a constant ``float`` or a time-varying
@@ -253,6 +261,10 @@ class BandPassFilter(Effect):
         Lower cutoff in Hz. Accepts a constant ``float`` or a time-varying ``Signal``.
     high_hz:
         Upper cutoff in Hz. Accepts a constant ``float`` or a time-varying ``Signal``.
+    order:
+        Filter order. Each unit adds 6 dB/oct of rolloff steepness, so
+        ``order=4`` (the default) gives a 24 dB/oct slope. Internally the SVF
+        engine cascades ``order // 2`` second-order stages.
     resonance:
         Resonance amount from 0.0 (Butterworth, no peak) to 1.0
         (self-oscillation). Accepts a constant ``float`` or a time-varying
