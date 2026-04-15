@@ -58,7 +58,10 @@ class Percussion:
         total = len(g)
         hit_data = self.hit.data
         hit_len = len(hit_data)
-        out = np.zeros(total, dtype=np.float32)
+        if self.hit.n_channels == 1:
+            out = np.zeros(total, dtype=np.float32)
+        else:
+            out = np.zeros((total, self.hit.n_channels), dtype=np.float32)
 
         for idx in edges:
             velocity = g[idx]
