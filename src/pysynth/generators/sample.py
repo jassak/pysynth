@@ -55,8 +55,7 @@ class Sample:
     def n_channels(self) -> int:
         return 1 if self.data.ndim == 1 else self.data.shape[1]
 
-    @property
-    def n_samples(self) -> int:
+    def __len__(self) -> int:
         return len(self.data)
 
     # ------------------------------------------------------------------ #
@@ -118,21 +117,9 @@ class Sample:
 
     def __getitem__(self, key: slice) -> Sample:
         """Slice by time in seconds: ``sample[0.5:1.2]``."""
-        if not isinstance(key, slice):
-            raise TypeError("Sample only supports slice indexing (e.g. sample[0.5:1.2])")
-        if key.step is not None:
-            raise ValueError("Step is not supported in Sample slicing")
-
-        start_idx = 0
-        if key.start is not None:
-            start_idx = max(0, int(key.start * self.sample_rate))
-
-        end_idx = self.n_samples
-        if key.stop is not None:
-            end_idx = min(self.n_samples, int(key.stop * self.sample_rate))
-
+        sliced = self.as_signal()[key]
         return Sample(
-            self.data[start_idx:end_idx],
+            sliced.data,
             self.sample_rate,
             root_pitch=self.root_pitch,
         )
@@ -149,13 +136,8 @@ class Sample:
         mode:
             Normalization mode.  Currently only ``"peak"`` is supported.
         """
-        if mode != "peak":
-            raise ValueError(f"Unsupported normalization mode: {mode!r}")
-        peak = np.max(np.abs(self.data))
-        if peak == 0:
-            return Sample(self.data.copy(), self.sample_rate, root_pitch=self.root_pitch,
-                          loop_start=self.loop_start, loop_end=self.loop_end)
-        return Sample(self.data / peak, self.sample_rate, root_pitch=self.root_pitch,
+        normalized = self.as_signal().normalize(mode)
+        return Sample(normalized.data, self.sample_rate, root_pitch=self.root_pitch,
                       loop_start=self.loop_start, loop_end=self.loop_end)
 
     # ------------------------------------------------------------------ #
@@ -178,7 +160,7 @@ class Sample:
         root = self.root_pitch
         loop_s = self.loop_start
         loop_e = self.loop_end
-        n_src = len(self.data)
+        n_src = len(self)
 
         if hz is not None and root is None:
             raise ValueError(

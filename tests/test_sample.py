@@ -30,13 +30,13 @@ class TestConstruction:
         data = np.ones(100, dtype=np.float32)
         s = Sample(data, SR)
         assert s.n_channels == 1
-        assert s.n_samples == 100
+        assert len(s) == 100
 
     def test_direct_stereo(self):
         data = np.ones((100, 2), dtype=np.float32)
         s = Sample(data, SR)
         assert s.n_channels == 2
-        assert s.n_samples == 100
+        assert len(s) == 100
 
     def test_dtype_coercion(self):
         data = np.ones(100, dtype=np.float64)
@@ -110,8 +110,8 @@ class TestProperties:
     def test_n_channels_stereo(self):
         assert Sample(np.zeros((100, 2)), SR).n_channels == 2
 
-    def test_n_samples(self):
-        assert Sample(np.zeros(123), SR).n_samples == 123
+    def test_len(self):
+        assert len(Sample(np.zeros(123), SR)) == 123
 
 
 # ------------------------------------------------------------------ #
@@ -123,18 +123,18 @@ class TestSlicing:
     def test_basic_slice(self):
         s = Sample(np.arange(SR, dtype=np.float32), SR)  # 1 second
         sliced = s[0.25:0.75]
-        assert sliced.n_samples == int(0.5 * SR)
+        assert len(sliced) == int(0.5 * SR)
         assert sliced.duration == pytest.approx(0.5)
 
     def test_none_start(self):
         s = Sample(np.arange(SR, dtype=np.float32), SR)
         sliced = s[:0.5]
-        assert sliced.n_samples == int(0.5 * SR)
+        assert len(sliced) == int(0.5 * SR)
 
     def test_none_end(self):
         s = Sample(np.arange(SR, dtype=np.float32), SR)
         sliced = s[0.5:]
-        assert sliced.n_samples == int(0.5 * SR)
+        assert len(sliced) == int(0.5 * SR)
 
     def test_preserves_root_pitch(self):
         s = Sample(np.zeros(SR), SR, root_pitch=440.0)
@@ -143,7 +143,7 @@ class TestSlicing:
     def test_out_of_bounds_clamped(self):
         s = Sample(np.zeros(SR), SR)
         sliced = s[-1.0:5.0]
-        assert sliced.n_samples == SR
+        assert len(sliced) == SR
 
     def test_non_slice_raises(self):
         s = Sample(np.zeros(SR), SR)

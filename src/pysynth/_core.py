@@ -29,7 +29,7 @@ class Signal:
         self.data = np.asarray(self.data, dtype=np.float32)
 
     # ------------------------------------------------------------------ #
-    # Properties                                                           #
+    # Properties                                                         #
     # ------------------------------------------------------------------ #
 
     @property
@@ -40,8 +40,11 @@ class Signal:
     def n_channels(self) -> int:
         return 1 if self.data.ndim == 1 else self.data.shape[1]
 
+    def __len__(self) -> int:
+        return len(self.data)
+
     # ------------------------------------------------------------------ #
-    # Vector space operations — all return new Signal instances            #
+    # Vector space operations — all return new Signal instances          #
     # ------------------------------------------------------------------ #
 
     def __add__(self, other: Signal | float | int) -> Signal:
@@ -107,7 +110,7 @@ class Signal:
         return self.__add__(-other if isinstance(other, Signal) else -float(other))
 
     # ------------------------------------------------------------------ #
-    # REPL convenience                                                     #
+    # REPL convenience                                                   #
     # ------------------------------------------------------------------ #
 
     def play(self, blocking: bool = True) -> None:
@@ -160,7 +163,7 @@ class Signal:
         return f"Signal({self.duration:.3f}s, {channels}, {self.sample_rate}Hz)"
 
     # ------------------------------------------------------------------ #
-    # Class methods                                                        #
+    # Signal processing                                                  #
     # ------------------------------------------------------------------ #
 
     def shift(self, seconds: float) -> Signal:
@@ -178,6 +181,42 @@ class Signal:
         else:
             pad = np.zeros((n, self.data.shape[1]), dtype=np.float32)
         return Signal(np.concatenate([pad, self.data]), self.sample_rate)
+
+    def __getitem__(self, key: slice) -> Signal:
+        """Slice by time in seconds: ``signal[0.5:1.2]``."""
+        if not isinstance(key, slice):
+            raise TypeError("Signal only supports slice indexing (e.g. signal[0.5:1.2])")
+        if key.step is not None:
+            raise ValueError("Step is not supported in Signal slicing")
+
+        start_idx = 0
+        if key.start is not None:
+            start_idx = max(0, int(key.start * self.sample_rate))
+
+        end_idx = len(self)
+        if key.stop is not None:
+            end_idx = min(len(self), int(key.stop * self.sample_rate))
+
+        return Signal(self.data[start_idx:end_idx].copy(), self.sample_rate)
+
+    def normalize(self, mode: str = "peak") -> Signal:
+        """Return a peak-normalized copy.
+
+        Parameters
+        ----------
+        mode:
+            Normalization mode.  Currently only ``"peak"`` is supported.
+        """
+        if mode != "peak":
+            raise ValueError(f"Unsupported normalization mode: {mode!r}")
+        peak = np.max(np.abs(self.data))
+        if peak == 0:
+            return Signal(self.data.copy(), self.sample_rate)
+        return Signal(self.data / peak, self.sample_rate)
+
+    # ------------------------------------------------------------------ #
+    # Class methods                                                      #
+    # ------------------------------------------------------------------ #
 
     @classmethod
     def silence(cls, duration: float, sample_rate: int = SAMPLE_RATE) -> Signal:

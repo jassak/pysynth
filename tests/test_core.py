@@ -34,8 +34,89 @@ class TestSignalProperties:
 
     def test_silence(self):
         s = Signal.silence(0.5, SR)
-        assert len(s.data) == 500
+        assert len(s) == 500
         assert np.all(s.data == 0.0)
+
+    def test_len(self):
+        s = _sig([1.0, 2.0, 3.0])
+        assert len(s) == 3
+
+
+# ------------------------------------------------------------------ #
+# Signal slicing                                                       #
+# ------------------------------------------------------------------ #
+
+
+class TestSignalSlicing:
+    def test_basic_slice(self):
+        s = _sig(np.arange(SR, dtype=np.float32))  # 1 second
+        sliced = s[0.25:0.75]
+        assert len(sliced) == int(0.5 * SR)
+        assert sliced.duration == pytest.approx(0.5)
+
+    def test_none_start(self):
+        s = _sig(np.arange(SR, dtype=np.float32))
+        sliced = s[:0.5]
+        assert len(sliced) == int(0.5 * SR)
+
+    def test_none_end(self):
+        s = _sig(np.arange(SR, dtype=np.float32))
+        sliced = s[0.5:]
+        assert len(sliced) == int(0.5 * SR)
+
+    def test_out_of_bounds_clamped(self):
+        s = _sig(np.zeros(SR))
+        sliced = s[-1.0:5.0]
+        assert len(sliced) == SR
+
+    def test_preserves_sample_rate(self):
+        s = Signal(np.zeros(22050, dtype=np.float32), 22050)
+        assert s[0.0:0.5].sample_rate == 22050
+
+    def test_returns_copy(self):
+        s = _sig([1.0, 2.0, 3.0, 4.0])
+        sliced = s[0.0:0.003]
+        sliced.data[:] = 0.0
+        assert s.data[0] == 1.0
+
+    def test_non_slice_raises(self):
+        s = _sig(np.zeros(SR))
+        with pytest.raises(TypeError):
+            s[42]
+
+    def test_step_raises(self):
+        s = _sig(np.zeros(SR))
+        with pytest.raises(ValueError, match="Step"):
+            s[0.0:1.0:0.1]
+
+
+# ------------------------------------------------------------------ #
+# Signal normalize                                                     #
+# ------------------------------------------------------------------ #
+
+
+class TestSignalNormalize:
+    def test_peak_normalize(self):
+        s = _sig([0.0, 0.25, -0.5, 0.1]).normalize()
+        assert np.max(np.abs(s.data)) == pytest.approx(1.0)
+
+    def test_already_normalized(self):
+        data = [0.0, 1.0, -1.0]
+        s = _sig(data).normalize()
+        np.testing.assert_allclose(s.data, data, atol=1e-7)
+
+    def test_zero_signal(self):
+        s = _sig(np.zeros(100)).normalize()
+        assert np.all(s.data == 0.0)
+
+    def test_returns_copy(self):
+        s = _sig([0.5, -0.5])
+        n = s.normalize()
+        assert n.data is not s.data
+
+    def test_unsupported_mode(self):
+        with pytest.raises(ValueError, match="Unsupported"):
+            _sig([1.0]).normalize(mode="rms")
 
 
 # ------------------------------------------------------------------ #

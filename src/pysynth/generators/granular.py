@@ -92,7 +92,7 @@ class Granular:
                 )
 
         sample_data = sample.data.astype(np.float64)
-        n_src = sample.n_samples
+        n_src = len(sample)
         root = sample.root_pitch
 
         def render(dur: float, sr: int = SAMPLE_RATE) -> Signal:
