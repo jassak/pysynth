@@ -19,6 +19,9 @@ dependencies = [
 requires = ["uv_build>=0.9.18,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [dependency-groups]
 dev = [
     "ipython>=9.12.0",
