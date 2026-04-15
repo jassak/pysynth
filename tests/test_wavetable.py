@@ -181,6 +181,51 @@ class TestFrequency:
 
 
 # ------------------------------------------------------------------ #
+# from_sample                                                         #
+# ------------------------------------------------------------------ #
+
+
+class TestFromSample:
+    def test_basic(self):
+        from pysynth.generators.sample import Sample
+        # 4 cycles of sine → 4 frames
+        n = 4 * 256
+        data = np.sin(np.linspace(0, 8 * np.pi, n, endpoint=False)).astype(np.float32)
+        s = Sample(data, SR)
+        wt = Wavetable.from_sample(s, n_frames=4, table_size=256)
+        assert wt.n_tables == 4
+        assert wt.table_size == 256
+
+    def test_renders_audio(self):
+        from pysynth.generators.sample import Sample
+        n = 4 * 256
+        data = np.sin(np.linspace(0, 8 * np.pi, n, endpoint=False)).astype(np.float32)
+        s = Sample(data, SR)
+        wt = Wavetable.from_sample(s, n_frames=4, table_size=256)
+        sig = wt.at(100).render(0.05, SR)
+        assert len(sig.data) == int(0.05 * SR)
+        assert np.max(np.abs(sig.data)) > 0.01
+
+    def test_stereo_mixed_to_mono(self):
+        from pysynth.generators.sample import Sample
+        n = 256
+        left = np.ones(n, dtype=np.float32)
+        right = -np.ones(n, dtype=np.float32)
+        s = Sample(np.column_stack([left, right]), SR)
+        wt = Wavetable.from_sample(s, n_frames=1, table_size=64)
+        assert wt.n_tables == 1
+        # Mixed: (1 + -1) / 2 = 0
+        sig = wt.at(100).render(0.01, SR)
+        assert np.max(np.abs(sig.data)) < 0.01
+
+    def test_too_short_raises(self):
+        from pysynth.generators.sample import Sample
+        s = Sample(np.zeros(5), SR)
+        with pytest.raises(ValueError, match="too short"):
+            Wavetable.from_sample(s, n_frames=10)
+
+
+# ------------------------------------------------------------------ #
 # Integration: top-level import                                       #
 # ------------------------------------------------------------------ #
 

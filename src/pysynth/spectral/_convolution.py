@@ -17,8 +17,8 @@ class ConvolutionReverb(Effect):
     Parameters
     ----------
     impulse_response:
-        The impulse response as a :class:`Signal`, or a path (str / Path)
-        to a WAV file.
+        The impulse response as a :class:`Signal`, a :class:`Sample`, or a
+        path (str / Path) to a WAV file.
     wet:
         Mix ratio of the convolved signal (0 = dry, 1 = fully wet).
     predelay:
@@ -31,6 +31,9 @@ class ConvolutionReverb(Effect):
         wet: float = 0.5,
         predelay: float = 0.0,
     ) -> None:
+        # Accept Sample via duck-typing (avoid circular import)
+        if hasattr(impulse_response, "as_signal") and not isinstance(impulse_response, Signal):
+            impulse_response = impulse_response.as_signal()
         if isinstance(impulse_response, (str, Path)):
             sr, data = wavfile.read(impulse_response)
             if data.dtype == np.int16:

@@ -18,7 +18,7 @@ from pysynth import ( SAMPLE_RATE, Signal, Generator, Oscillator, WhiteNoise,
     Echo, Tanh, Clip, Overdrive, Pitch, Note, Scale, Sequencer, Step, StepSequencer,
     Arpeggiator, Mixer, pan, stft, freeze, smear, shift_bins, cross_synthesize,
     pitch_shift, SpectralFreeze, SpectralSmear, PitchShift, Vocoder, ConvolutionReverb,
-    DrumMachine, Percussion, PolymetricSequencer,
+    DrumMachine, Percussion, PolymetricSequencer, Sample, Granular,
 )
 
 DUR = 3.0
@@ -1529,3 +1529,165 @@ def polymetric_notation(bpm=100):
     mx.add_track(high_audio, volume=0.7, position=0.4)
     mx.add_track(low_audio, volume=0.8, position=-0.4)
     return DatorroReverb(decay=0.5, wet=0.25)(mx.render())
+
+
+# ---------------------------------------------------------------------------
+# 21. Sample playback
+# ---------------------------------------------------------------------------
+
+
+def sample_octaves():
+    """Pitch-shift a saw sample across three octaves."""
+    sig = Oscillator("saw").at(110).render(2.0)
+    s = Sample.from_signal(sig, root_pitch=110)
+    low = s.at(55).render(2.0)
+    mid = s.at(110).render(2.0)
+    high = s.at(220).render(2.0)
+    return Signal.concat(low, mid, high) * 0.5
+
+
+def sample_melody():
+    """Drive a sample with Sequencer pitch CV — same workflow as oscillators."""
+    sig = (Oscillator("saw") + Oscillator("saw", ratio=2.001) * 0.3).at(220).render(1.0)
+    s = Sample.from_signal(sig, root_pitch=220)
+
+    notes = [
+        Note(Pitch(220), 1), Note(Pitch(330), 0.5), Note(Pitch(440), 0.5),
+        Note(Pitch(392), 1), Note(Pitch(330), 1),
+    ]
+    pitch, gate = Sequencer(notes, bpm=120).cv()
+    dur = pitch.duration
+
+    audio = s.at(pitch).render(dur)
+    env = adsr(0.01, 0.1, 0.3, 0.7, 0.15).trigger(gate)
+    cutoff = adsr(0.005, 0.15, 0.0, 0.0, 0.05).trigger(gate) * 3000 + 400
+    return LowPassFilter(cutoff)(audio) * env
+
+
+def sample_sliced():
+    """Slice a sample and play back different regions."""
+    sig = Oscillator("saw").at(110).render(2.0)
+    sig = (LowPassFilter(800) | DatorroReverb(decay=0.4, wet=0.6))(sig)
+    s = Sample.from_signal(sig)
+    head = s[:0.5].normalize().at().render(0.5)
+    tail = s[1.0:2.0].normalize().at().render(1.0)
+    return Signal.concat(head, Signal.silence(0.2), tail)
+
+
+def sample_loop():
+    """Sustained loop-point playback — holds the loop region indefinitely."""
+    sr = SAMPLE_RATE
+    dur = 0.5
+    n = int(dur * sr)
+    # Attack portion (first 0.1s) + looped sustain (0.1s–0.3s)
+    sig = Oscillator("triangle").at(330).render(dur)
+    env_data = adsr(0.01, 0.05, 0.3, 0.8, 0.1).render(dur).data
+    sig = sig * Signal(env_data, sr)
+    s = Sample(sig.data, sr, root_pitch=330,
+              loop_start=int(0.1 * sr), loop_end=int(0.3 * sr))
+    # Render longer than the original — loop region sustains
+    return s.at(330).render(2.0) * 0.6
+
+
+# ---------------------------------------------------------------------------
+# 22. Granular synthesis
+# ---------------------------------------------------------------------------
+
+
+def granular_cloud(dur=6.0):
+    """Granular cloud from a short saw burst — ambient texture."""
+    sig = Oscillator("saw").at(110).render(0.5)
+    sig = LowPassFilter(1200)(sig)
+    s = Sample.from_signal(sig)
+    grain = Granular(s, position=0.3, grain_size=0.06, density=25, seed=7)
+    return DatorroReverb(decay=0.8, wet=0.7)(grain.at().render(dur)) * 0.5
+
+
+def granular_scan(dur=6.0):
+    """Slowly scan through a sample with granular playback."""
+    import numpy as np
+    sig = (Oscillator("saw") + Oscillator("square", ratio=0.5) * 0.3).at(110).render(2.0)
+    sig = LowPassFilter(2000)(sig)
+    s = Sample.from_signal(sig)
+    # Triangle LFO scans position 0 -> 1 -> 0
+    n = int(dur * SAMPLE_RATE)
+    ramp = np.linspace(0, 2, n, dtype=np.float32)
+    tri = np.where(ramp < 1.0, ramp, 2.0 - ramp)
+    pos = Signal(tri, SAMPLE_RATE)
+    grain = Granular(s, position=pos, grain_size=0.08, density=30, spread=0.02, seed=3)
+    return DatorroReverb(decay=0.7, wet=0.5)(grain.at().render(dur)) * 0.5
+
+
+def granular_pitched(bpm=100):
+    """Granular engine driven by Sequencer pitch CV — melodic grains."""
+    sig = Oscillator("saw").at(220).render(1.0)
+    sig = LowPassFilter(3000)(sig)
+    s = Sample.from_signal(sig, root_pitch=220)
+
+    notes = [
+        Note(Pitch(220), 1), Note(Pitch(261.63), 1),
+        Note(Pitch(329.63), 0.5), Note(Pitch(293.66), 0.5),
+        Note(Pitch(220), 1),
+    ]
+    pitch, gate = Sequencer(notes, bpm=bpm).cv()
+    dur = pitch.duration
+
+    grain = Granular(s, position=0.4, grain_size=0.05, density=30, spread=0.01, seed=5)
+    audio = grain.at(pitch).render(dur)
+    env = adsr(0.02, 0.15, 0.4, 0.7, 0.2).trigger(gate)
+    return DatorroReverb(decay=0.5, wet=0.3)(audio * env) * 0.5
+
+
+def granular_density_ramp(dur=5.0):
+    """Grain density ramps from sparse clicks to a dense cloud."""
+    import numpy as np
+    sig = Oscillator("triangle").at(330).render(0.3)
+    s = Sample.from_signal(sig)
+    n = int(dur * SAMPLE_RATE)
+    dens = Signal(np.linspace(2, 60, n, dtype=np.float32), SAMPLE_RATE)
+    grain = Granular(s, position=0.2, grain_size=0.04, density=dens, seed=11)
+    return grain.at().render(dur) * 0.5
+
+
+def granular_shimmer(dur=8.0):
+    """Shimmering granular pad — pitch-doubled grains with reverb."""
+    sig = Oscillator("saw").at(220).render(1.0)
+    sig = LowPassFilter(1500)(sig)
+    s = Sample.from_signal(sig, root_pitch=220)
+    # Grains at 2x pitch = octave up shimmer
+    grain = Granular(s, position=0.5, grain_size=0.07, density=35,
+                     pitch=2.0, spread=0.05, seed=42)
+    dry = grain.at().render(dur)
+    return DatorroReverb(decay=0.9, wet=0.8)(dry) * 0.3
+
+
+# ---------------------------------------------------------------------------
+# 23. Wavetable from sample
+# ---------------------------------------------------------------------------
+
+
+def wt_from_sample():
+    """Build a wavetable from a sample, then morph through it."""
+    import numpy as np
+    # Render 8 cycles of a saw that sweeps through a filter
+    n_cycles = 8
+    cycle_len = 512
+    total = n_cycles * cycle_len
+    t = np.arange(total, dtype=np.float64) / SAMPLE_RATE
+    raw = np.float32(np.mod(t * 440 * 2, 2) - 1)  # saw at ~440
+    # Progressive LPF: each cycle gets a lower cutoff
+    for i in range(n_cycles):
+        start = i * cycle_len
+        end = start + cycle_len
+        cutoff = 8000 - i * 900
+        chunk = Signal(raw[start:end], SAMPLE_RATE)
+        raw[start:end] = LowPassFilter(cutoff)(chunk).data
+
+    s = Sample(raw, SAMPLE_RATE)
+    wt = Wavetable.from_sample(s, n_frames=n_cycles, table_size=512)
+
+    # Morph from bright (position 0) to dark (position 7)
+    dur = 4.0
+    n = int(dur * SAMPLE_RATE)
+    pos = Signal(np.linspace(0, n_cycles - 1, n, dtype=np.float32), SAMPLE_RATE)
+    return wt.at(220, position=pos).render(dur) * 0.5

@@ -66,6 +66,45 @@ class Wavetable:
         tables = [_shape(w, phase) for w in waveforms]
         return cls(tables, table_size=table_size)
 
+    @classmethod
+    def from_sample(
+        cls,
+        sample: Sample,
+        n_frames: int,
+        table_size: int = 2048,
+    ) -> Wavetable:
+        """Build a Wavetable by slicing a Sample into single-cycle frames.
+
+        The sample is divided into *n_frames* equal segments, each resampled
+        to *table_size*.  This allows loading wavetable ``.wav`` files
+        (e.g. Serum / Vital format) directly.
+
+        Parameters
+        ----------
+        sample:
+            Source audio to slice.  Stereo samples are mixed to mono first.
+        n_frames:
+            Number of single-cycle frames to extract.
+        table_size:
+            Number of samples per frame after resampling.
+        """
+        from pysynth.generators.sample import Sample as _Sample  # avoid circular at module level
+
+        data = sample.data.astype(np.float64)
+        if data.ndim == 2:
+            data = data.mean(axis=1)
+        frame_len = len(data) // n_frames
+        if frame_len == 0:
+            raise ValueError(
+                f"Sample has {len(data)} samples, too short for {n_frames} frames"
+            )
+        tables = []
+        for i in range(n_frames):
+            start = i * frame_len
+            end = start + frame_len
+            tables.append(data[start:end])
+        return cls(tables, table_size=table_size)
+
     @property
     def n_tables(self) -> int:
         return self._n_tables
