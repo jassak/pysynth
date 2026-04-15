@@ -163,6 +163,32 @@ def resonant_sweep(hz=110, dur=DUR):
     return LowPassFilter(cutoff, order=8)(src)
 
 
+def resonant_bass(bpm=120):
+    """Squelchy bass: square wave through a resonant low-pass filter."""
+    notes = [
+        Note(Pitch(55), 0.5),
+        Note(Pitch(55), 0.25),
+        Note(Pitch(41.2), 0.25),
+        Note(Pitch(55), 0.5),
+        Note.rest(0.25),
+        Note(Pitch(73.4), 0.25),
+    ]
+    pitch, gate = Sequencer(notes, bpm=bpm).cv(repeats=4)
+    dur = pitch.duration
+
+    audio = Oscillator("square").at(pitch).render(dur) * 0.4
+    amp = adsr(0.005, 0.15, 0.4, 0.7, 0.06).trigger(gate)
+    cutoff = adsr(0.005, 0.2, 0.0, 0.0, 0.04).trigger(gate) * 3000 + 200
+    return LowPassFilter(cutoff, resonance=0.75)(audio) * amp
+
+
+def modulated_resonance(hz=110, dur=DUR):
+    """Saw wave with slowly sweeping resonance — from clean to squelchy."""
+    src = Oscillator("saw").at(hz).render(dur) * 0.22
+    res = Oscillator("sine").at(0.4).render(dur) * 0.45 + 0.45  # 0.0 – 0.9
+    return LowPassFilter(800, resonance=res)(src)
+
+
 # ---------------------------------------------------------------------------
 # 6. Distortion & saturation
 # ---------------------------------------------------------------------------
