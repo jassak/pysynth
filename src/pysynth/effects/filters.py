@@ -208,7 +208,7 @@ class LowPassFilter(Effect):
                 sig.sample_rate,
             )
         b, a = scipy_signal.butter(self.order, self.cutoff_hz / nyquist, btype="low")
-        data = scipy_signal.filtfilt(b, a, sig.data).astype(np.float32)
+        data = scipy_signal.filtfilt(b, a, sig.data, axis=0).astype(np.float32)
         return Signal(data, sig.sample_rate)
 
 
@@ -246,7 +246,7 @@ class HighPassFilter(Effect):
                 sig.sample_rate,
             )
         b, a = scipy_signal.butter(self.order, self.cutoff_hz / nyquist, btype="high")
-        data = scipy_signal.filtfilt(b, a, sig.data).astype(np.float32)
+        data = scipy_signal.filtfilt(b, a, sig.data, axis=0).astype(np.float32)
         return Signal(data, sig.sample_rate)
 
 
@@ -290,5 +290,5 @@ class BandPassFilter(Effect):
             [self.low_hz / nyquist, self.high_hz / nyquist],
             btype="band",
         )
-        data = scipy_signal.filtfilt(b, a, sig.data).astype(np.float32)
+        data = scipy_signal.filtfilt(b, a, sig.data, axis=0).astype(np.float32)
         return Signal(data, sig.sample_rate)
