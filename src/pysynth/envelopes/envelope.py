@@ -9,25 +9,45 @@ from pysynth._core import SAMPLE_RATE, Signal
 
 
 @numba.njit(cache=True)
-def _envelope_trigger(gate_data, out, seg_data, offsets, n_segs, sustain_node, sustain_level):
+def _remap(raw, seg_start_val, seg_end_val, from_level):
+    """Remap a pre-rendered segment sample so the segment starts from
+    *from_level* instead of *seg_start_val*, reaching *seg_end_val*
+    at the same point.  Preserves the curve shape."""
+    span = seg_end_val - seg_start_val
+    if abs(span) > 1e-12:
+        return from_level + (raw - seg_start_val) * (seg_end_val - from_level) / span
+    return from_level
+
+
+@numba.njit(cache=True)
+def _envelope_trigger(gate_data, out, seg_data, offsets, n_segs, sustain_node,
+                      sustain_level, release_start_level, seg_start_vals, seg_end_vals):
     seg_idx = n_segs
     seg_pos = 0
     level = 0.0
     prev_gate = 0.0
+    release_scale = 1.0
+    retrigger_level = 0.0
 
     for i in range(len(gate_data)):
         g = gate_data[i]
 
-        # Rising edge: restart from segment 0
+        # Rising edge: restart from segment 0, remapping attack from current level
         if g > 0.0 and prev_gate <= 0.0:
+            retrigger_level = level
             seg_idx = 0
             seg_pos = 0
+            release_scale = 1.0
 
-        # Falling edge: jump to release segments
+        # Falling edge: jump to release segments, scaled from current level
         if g <= 0.0 and prev_gate > 0.0:
             if sustain_node >= 0 and sustain_node + 1 < n_segs:
                 seg_idx = sustain_node + 1
                 seg_pos = 0
+                if abs(release_start_level) > 1e-12:
+                    release_scale = level / release_start_level
+                else:
+                    release_scale = 0.0
             else:
                 seg_idx = n_segs
 
@@ -38,16 +58,28 @@ def _envelope_trigger(gate_data, out, seg_data, offsets, n_segs, sustain_node, s
             if sustain_node >= 0 and seg_idx == sustain_node and g > 0.0 and seg_pos >= seg_len:
                 level = sustain_level
             elif seg_pos < seg_len:
-                level = seg_data[seg_start + seg_pos]
+                raw = seg_data[seg_start + seg_pos]
+                if seg_idx > sustain_node >= 0:
+                    level = raw * release_scale
+                elif seg_idx == 0 and abs(retrigger_level) > 1e-12:
+                    level = _remap(raw, seg_start_vals[0], seg_end_vals[0], retrigger_level)
+                else:
+                    level = raw
                 seg_pos += 1
             else:
                 seg_idx += 1
                 seg_pos = 0
+                if seg_idx == 1 and abs(retrigger_level) > 1e-12:
+                    retrigger_level = 0.0
                 if seg_idx < n_segs:
                     seg_start2 = offsets[seg_idx]
                     seg_len2 = offsets[seg_idx + 1] - seg_start2
                     if seg_pos < seg_len2:
-                        level = seg_data[seg_start2 + seg_pos]
+                        raw2 = seg_data[seg_start2 + seg_pos]
+                        if seg_idx > sustain_node >= 0:
+                            level = raw2 * release_scale
+                        else:
+                            level = raw2
                         seg_pos += 1
                 else:
                     level = 0.0
@@ -197,6 +229,16 @@ class Envelope:
         else:
             sustain_level = 0.0
 
+        # Determine release start level (start value of first release segment)
+        if sn is not None and sn + 1 < n_segs:
+            release_start_level = float(self.segments[sn + 1].start)
+        else:
+            release_start_level = 0.0
+
+        # Per-segment start/end values for remapping on retrigger
+        seg_start_vals = np.array([float(s.start) for s in self.segments], dtype=np.float64)
+        seg_end_vals = np.array([float(s.end) for s in self.segments], dtype=np.float64)
+
         # Flatten seg_arrays into CSR-style storage for numba
         if seg_arrays:
             seg_data = np.concatenate([a.astype(np.float64) for a in seg_arrays])
@@ -215,6 +257,9 @@ class Envelope:
             n_segs,
             sn if sn is not None else -1,
             sustain_level,
+            release_start_level,
+            seg_start_vals,
+            seg_end_vals,
         )
         return Signal(out.astype(np.float32), sr)
 
