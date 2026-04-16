@@ -68,7 +68,7 @@ class PolymetricSequencer:
         retrigger_gap: float = 0.002,
     ) -> None:
         if isinstance(tracks, list):
-            tracks = {f"track_{i}": t for i, t in enumerate(tracks)}
+            tracks = {i: t for i, t in enumerate(tracks)}
         self.tracks = tracks
         self.scale = scale
         self.bpm = bpm
@@ -171,7 +171,7 @@ class PolymetricSequencer:
         Negative degrees (e.g. ``-1``) work if the scale supports them.
         """
         if isinstance(tracks, list):
-            parsed = {f"track_{i}": cls._parse(s) for i, s in enumerate(tracks)}
+            parsed = {i: cls._parse(s) for i, s in enumerate(tracks)}
         else:
             parsed = {name: cls._parse(s) for name, s in tracks.items()}
         return cls(parsed, scale=scale, **kwargs)

@@ -181,10 +181,10 @@ class TestPolymetricSequencerFromNotation:
     def test_list_input(self):
         seq = PolymetricSequencer.from_notation(
             ["0 2 4", "0 . 3"], SCALE, bpm=60)
-        assert "track_0" in seq.tracks
-        assert "track_1" in seq.tracks
-        assert seq.tracks["track_0"] == [0, 2, 4]
-        assert seq.tracks["track_1"] == [0, None, 3]
+        assert 0 in seq.tracks
+        assert 1 in seq.tracks
+        assert seq.tracks[0] == [0, 2, 4]
+        assert seq.tracks[1] == [0, None, 3]
 
     def test_kwargs_passed_through(self):
         seq = PolymetricSequencer.from_notation(
@@ -196,9 +196,9 @@ class TestPolymetricSequencerFromNotation:
 class TestPolymetricSequencerListInput:
     def test_auto_names(self):
         seq = PolymetricSequencer([[0, 1], [2, 3]], SCALE, bpm=60)
-        assert "track_0" in seq.tracks
-        assert "track_1" in seq.tracks
-        assert seq.tracks["track_0"] == [0, 1]
+        assert 0 in seq.tracks
+        assert 1 in seq.tracks
+        assert seq.tracks[0] == [0, 1]
 
 
 class TestPolymetricSequencerEmpty:
