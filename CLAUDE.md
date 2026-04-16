@@ -44,7 +44,7 @@ A Python audio synthesis library built around a few mathematical abstractions an
   - `.render(duration?) -> Signal` — one-shot render
   - `.apply(signal) -> Signal` — multiply signal by envelope
   - `.trigger(gate) -> Signal` — gate-triggered render: re-triggers on rising edges, sustains while gate is high, releases when gate falls
-- **`adsr(attack, decay, sustain, sustain_level, release) -> Envelope`** — convenience constructor with `sustain_node=2`
+- **`adsr(attack, decay, sustain, release) -> Envelope`** — convenience constructor with `sustain_node=1`; sustain is the level held while gate is high
 
 Modulation signals (LFO-style) are expressed directly via Signal arithmetic: `Oscillator("sine").at(rate).render(dur) * depth + offset`.
 
@@ -73,14 +73,14 @@ The Sequencer outputs control signals, not audio. Composition happens at the Sig
 # Monophonic
 pitch, gate = Sequencer(notes, bpm=120).cv()
 audio  = Oscillator("saw").at(pitch).render(pitch.duration)
-amp    = adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(gate)
-cutoff = adsr(0.005, 0.2, 0.0, 0.0, 0.05).trigger(gate) * 4000 + 300
+amp    = adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
+cutoff = adsr(0.005, 0.2, 0.0, 0.05).trigger(gate) * 4000 + 300
 output = LowPassFilter(cutoff)(audio) * amp
 
 # Polyphonic
 voices = PolySequencer.from_chords(chords, n_voices=4, bpm=120).cv()
 audio = sum(
-    Oscillator("saw").at(p).render(p.duration) * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(g)
+    Oscillator("saw").at(p).render(p.duration) * adsr(0.01, 0.1, 0.7, 0.1).trigger(g)
     for p, g in voices
 )
 ```

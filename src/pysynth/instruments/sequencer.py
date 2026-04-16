@@ -43,8 +43,8 @@ class Sequencer:
 
         pitch, gate = Sequencer(notes, bpm=120).cv()
         audio  = Oscillator("saw").at(pitch).render(pitch.duration)
-        amp    = adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(gate)
-        cutoff = adsr(0.005, 0.2, 0.0, 0.0, 0.05).trigger(gate) * 3000 + 400
+        amp    = adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
+        cutoff = adsr(0.005, 0.2, 0.0, 0.05).trigger(gate) * 3000 + 400
         output = LowPassFilter(cutoff)(audio) * amp
     """
 

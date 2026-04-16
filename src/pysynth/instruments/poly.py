@@ -37,7 +37,7 @@ class PolySequencer:
         voices = PolySequencer(events, n_voices=4, bpm=120).cv()
         audio = sum(
             Oscillator("saw").at(p).render(p.duration)
-            * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(g)
+            * adsr(0.01, 0.1, 0.7, 0.1).trigger(g)
             for p, g in voices
         )
     """

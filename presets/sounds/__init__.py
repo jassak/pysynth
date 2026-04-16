@@ -13,6 +13,7 @@ Percussion functions return ``Signal`` directly::
 """
 
 from presets.sounds.patch import Patch
+from presets.sounds.synths import Synth, FMSynth
 from presets.sounds.keys import organ, electric_piano
 from presets.sounds.bass import acid_bass, sub_bass, detuned_saw
 from presets.sounds.pads import ambient_pad, string_pad

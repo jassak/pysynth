@@ -83,7 +83,7 @@ class Oscillator:
         # CV/gate sequencing
         pitch, gate = Sequencer(notes, bpm=120).cv()
         audio = Oscillator("saw").at(pitch).render(pitch.duration)
-        output = audio * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(gate)
+        output = audio * adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
     """
 
     # Each component: (waveform, ratio, amplitude, phase).

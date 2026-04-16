@@ -12,23 +12,21 @@ def ambient_pad(
     detune: float = 0.003,
     attack: float = 0.5,
     decay: float = 0.3,
-    sustain: float = 4.0,
-    sustain_level: float = 0.75,
+    sustain: float = 0.75,
     release: float = 0.7,
 ) -> Patch:
     """Slow detuned-saw pad.
 
     *detune* is the relative frequency offset between the two oscillators.
     """
-    def synth(hz, dur, _d=detune):
-        a = Oscillator("saw").at(hz * (1 + _d)).render(dur)
-        b = Oscillator("saw").at(hz * (1 - _d)).render(dur)
-        return (a + b) * 0.3
-    return Patch(
-        synth=synth,
-        envelope=adsr(attack, decay, sustain, sustain_level, release),
-        name="ambient_pad",
-    )
+    env = adsr(attack, decay, sustain, release)
+
+    def synth(hz, gate, _d=detune, _env=env):
+        a = Oscillator("saw").at(hz * (1 + _d)).render(gate.duration)
+        b = Oscillator("saw").at(hz * (1 - _d)).render(gate.duration)
+        return (a + b) * 0.3 * _env.trigger(gate)
+
+    return Patch(synth=synth, name="ambient_pad")
 
 
 def string_pad(
@@ -36,8 +34,7 @@ def string_pad(
     detune: float = 0.006,
     attack: float = 0.4,
     decay: float = 0.2,
-    sustain: float = 3.0,
-    sustain_level: float = 0.8,
+    sustain: float = 0.8,
     release: float = 0.6,
 ) -> Patch:
     """Ensemble string pad: multiple detuned saw waves.
@@ -47,15 +44,13 @@ def string_pad(
     """
     import numpy as np
     offsets = np.linspace(-detune, detune, n_voices)
+    env = adsr(attack, decay, sustain, release)
 
-    def synth(hz, dur, _offsets=offsets, _n=n_voices):
+    def synth(hz, gate, _offsets=offsets, _n=n_voices, _env=env):
         sig = sum(
-            Oscillator("saw").at(hz * (1 + o)).render(dur)
+            Oscillator("saw").at(hz * (1 + o)).render(gate.duration)
             for o in _offsets
         )
-        return sig * (0.3 / _n)
-    return Patch(
-        synth=synth,
-        envelope=adsr(attack, decay, sustain, sustain_level, release),
-        name="string_pad",
-    )
+        return sig * (0.3 / _n) * _env.trigger(gate)
+
+    return Patch(synth=synth, name="string_pad")

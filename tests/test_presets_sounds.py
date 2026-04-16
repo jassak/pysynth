@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from pysynth import Signal, Pitch, Oscillator
+from pysynth import Signal, SAMPLE_RATE, Pitch, Oscillator
 from pysynth.envelopes import adsr
 from pysynth.music import Note
 from pysynth.instruments import Sequencer
@@ -45,6 +45,7 @@ class TestPatchBasics:
     def test_repr(self):
         r = repr(organ())
         assert "organ" in r
+        assert r == "Patch('organ')"
 
 
 class TestKeyPresets:

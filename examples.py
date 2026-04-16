@@ -31,12 +31,12 @@ DUR = 3.0
 ji_major = Scale(220, [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2])
 pentatonic = Scale(220, [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2])
 
-note_env = adsr(attack=0.01, decay=0.05, sustain=0.35, sustain_level=0.7, release=0.08)
-short_env = adsr(attack=0.005, decay=0.08, sustain=0.1, sustain_level=0.5, release=0.06)
-pluck_env = adsr(attack=0.005, decay=0.2, sustain=0.0, sustain_level=0.0, release=0.01)
-bell_env = adsr(attack=0.01, decay=0.4, sustain=0.0, sustain_level=0.0, release=0.01)
-bass_env = adsr(attack=0.005, decay=0.1, sustain=0.4, sustain_level=0.6, release=0.15)
-pad_env = adsr(attack=0.3, decay=0.2, sustain=1.5, sustain_level=0.8, release=0.5)
+note_env = adsr(attack=0.01, decay=0.05, sustain=0.7, release=0.08)
+short_env = adsr(attack=0.005, decay=0.08, sustain=0.5, release=0.06)
+pluck_env = adsr(attack=0.005, decay=0.2, sustain=0.0, release=0.01)
+bell_env = adsr(attack=0.01, decay=0.4, sustain=0.0, release=0.01)
+bass_env = adsr(attack=0.005, decay=0.1, sustain=0.6, release=0.15)
+pad_env = adsr(attack=0.3, decay=0.2, sustain=0.8, release=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +177,8 @@ def resonant_bass(bpm=120):
     dur = pitch.duration
 
     audio = Oscillator("square").at(pitch).render(dur) * 0.4
-    amp = adsr(0.005, 0.15, 0.4, 0.7, 0.06).trigger(gate)
-    cutoff = adsr(0.005, 0.2, 0.0, 0.0, 0.04).trigger(gate) * 3000 + 200
+    amp = adsr(0.005, 0.15, 0.7, 0.06).trigger(gate)
+    cutoff = adsr(0.005, 0.2, 0.0, 0.04).trigger(gate) * 3000 + 200
     return LowPassFilter(cutoff, resonance=0.75)(audio) * amp
 
 
@@ -249,17 +249,17 @@ def space_bell():
 
 def hihat(open=False):
     dur = 0.4 if open else 0.08
-    env = adsr(0.001, dur * 0.8, 0.0, 0.0, 0.01)
+    env = adsr(0.001, dur * 0.8, 0.0, 0.01)
     return env.apply(HighPassFilter(8000)(WhiteNoise().render(dur + 0.02)))
 
 
 def snare():
-    env = adsr(0.001, 0.12, 0.0, 0.0, 0.01)
+    env = adsr(0.001, 0.12, 0.0, 0.01)
     return env.apply(WhiteNoise().render(0.15) * 0.6 + Oscillator("sine").at(180).render(0.15) * 0.4)
 
 
 def kick():
-    env = adsr(0.001, 0.08, 0.0, 0.0, 0.01)
+    env = adsr(0.001, 0.08, 0.0, 0.01)
     pitch = Oscillator("sine").at(80).render(0.15) * 0.8
     body = Oscillator("sine").at(40).render(0.15) * 0.2
     return env.apply(pitch + body)
@@ -385,8 +385,8 @@ def acid_bass(bpm=130):
     dur = pitch.duration
 
     audio = Oscillator("saw").at(pitch).render(dur) * 0.5
-    amp = adsr(0.005, 0.1, 0.3, 0.8, 0.05).trigger(gate)
-    cutoff = adsr(0.005, 0.15, 0.0, 0.0, 0.03).trigger(gate) * 5000 + 300
+    amp = adsr(0.005, 0.1, 0.8, 0.05).trigger(gate)
+    cutoff = adsr(0.005, 0.15, 0.0, 0.03).trigger(gate) * 5000 + 300
     output = LowPassFilter(cutoff)(audio) * amp
 
     return (Overdrive(gain=3.0) | LowPassFilter(4000))(output)
@@ -452,10 +452,10 @@ def acid_303(bpm=138):
     audio = Oscillator("saw").at(pitch).render(dur) * 0.5
 
     # Filter envelope opens on each gate, scaled by the cutoff lane
-    filt_env = adsr(0.003, 0.12, 0.0, 0.0, 0.02).trigger(gate)
+    filt_env = adsr(0.003, 0.12, 0.0, 0.02).trigger(gate)
     cutoff = filt_env * cutoff_base + 250
 
-    amp = adsr(0.003, 0.08, 0.25, 0.7, 0.04).trigger(gate)
+    amp = adsr(0.003, 0.08, 0.7, 0.04).trigger(gate)
     filtered = LowPassFilter(cutoff)(audio) * amp
 
     # Accent lane drives a tanh saturator — louder steps get more grit
@@ -470,7 +470,7 @@ def acid_303(bpm=138):
 
 def ambient_pad(dur=6.0):
     """Slow stereo pad: detuned saws, plate reverb, panned wide."""
-    env = adsr(0.5, 0.3, dur - 1.5, 0.75, 0.7)
+    env = adsr(0.5, 0.3, 0.75, 0.7)
     sig_l = env.apply(Oscillator("saw").at(220 * 1.003).render(dur)) * 0.3
     sig_r = env.apply(Oscillator("saw").at(220 * 0.997).render(dur)) * 0.3
     plate = DatorroReverb(decay=0.85, bandwidth=0.9995, wet=0.5)
@@ -495,7 +495,7 @@ def wt_sweep(hz=220, dur=DUR):
 def wt_pad(dur=6.0):
     """Evolving stereo pad: detuned wavetables with slow position drift."""
     wt = Wavetable.from_waveforms(["sine", "triangle", "saw"])
-    env = adsr(0.4, 0.3, dur - 1.3, 0.8, 0.6)
+    env = adsr(0.4, 0.3, 0.8, 0.6)
     # slow, slightly different position LFOs for left and right
     pos_l = Oscillator("sine").at(0.08).render(dur) * 0.8 + 1.0
     pos_r = Oscillator("sine").at(0.11).render(dur) * 0.8 + 1.0
@@ -523,10 +523,10 @@ def wt_bass(bpm=110):
     dur = pitch.duration
 
     # position follows the filter envelope — brighter on attack
-    pos_env = adsr(0.005, 0.2, 0.0, 0.0, 0.05).trigger(gate) * 2.0
+    pos_env = adsr(0.005, 0.2, 0.0, 0.05).trigger(gate) * 2.0
     audio = wt.at(pitch, position=pos_env).render(dur) * 0.5
-    amp = adsr(0.005, 0.1, 0.3, 0.7, 0.1).trigger(gate)
-    cutoff = adsr(0.005, 0.15, 0.0, 0.0, 0.03).trigger(gate) * 4000 + 300
+    amp = adsr(0.005, 0.1, 0.7, 0.1).trigger(gate)
+    cutoff = adsr(0.005, 0.15, 0.0, 0.03).trigger(gate) * 4000 + 300
 
     return (LowPassFilter(cutoff) | Overdrive(gain=2.0) | LowPassFilter(3500))(audio) * amp
 
@@ -583,7 +583,7 @@ def frozen_bell():
 
 def smeared_pad(dur=5.0):
     """Saw pad with heavy spectral smear — blurs harmonics into a wash."""
-    env = adsr(0.3, 0.2, dur - 1.0, 0.8, 0.5)
+    env = adsr(0.3, 0.2, 0.8, 0.5)
     sig = env.apply(Oscillator("saw").at(220).render(dur)) * 0.3
     return SpectralSmear(amount=12.0)(sig)
 
@@ -602,7 +602,7 @@ def robot_voice():
     """Vocoder: white noise carrier shaped by a synthetic 'voice' modulator."""
     dur = 2.0
     # Modulator — a buzzy low tone that mimics vocal formants
-    mod_env = adsr(0.05, 0.1, dur - 0.5, 0.7, 0.3)
+    mod_env = adsr(0.05, 0.1, 0.7, 0.3)
     modulator = mod_env.apply(Oscillator("saw").at(120).render(dur))
     # Carrier — noise, which the vocoder reshapes
     carrier = WhiteNoise().render(dur)
@@ -695,7 +695,7 @@ def spectral_smear_drone(dur=8.0):
         + Oscillator("saw").at(ji_major[2].hz).render(dur) * 0.2
         + Oscillator("saw").at(ji_major[4].hz).render(dur) * 0.2
     )
-    env = adsr(0.5, 0.3, dur - 1.5, 0.8, 0.7)
+    env = adsr(0.5, 0.3, 0.8, 0.7)
     sig = env.apply(chord)
     spec = stft(sig, n_fft=4096)
     smeared = smear(spec, amount=30.0)
@@ -711,7 +711,7 @@ def vocoder_arp(bpm=120):
     carrier = Oscillator("sine").at(pitch).render(pitch.duration) * note_env.trigger(gate)
     # Modulator: slow saw sweep — gives rhythmic vowel-like filtering
     mod = Oscillator("saw").at(80).render(pitch.duration) * 0.5
-    mod_env = adsr(0.01, 0.3, pitch.duration - 0.8, 0.6, 0.4)
+    mod_env = adsr(0.01, 0.3, 0.6, 0.4)
     modulator = mod_env.apply(mod)
     return Vocoder(modulator, n_fft=1024, mix=0.8)(carrier) * 0.4
 
@@ -1143,7 +1143,7 @@ def tr808_clap_v2():
 
     # trigger filtered noise bursts from the gate
     burst_env = adsr(attack=0.001, decay=burst_dur - 0.002, sustain=0.0,
-                     sustain_level=0.0, release=0.001)
+                     release=0.001)
     bursts_dur = gate.duration
     noise_src = BandPassFilter(1200, 3500)(WhiteNoise().render(bursts_dur))
     bursts = noise_src * burst_env.trigger(gate) * 0.7
@@ -1228,7 +1228,7 @@ def tr909_clap_v2():
     _, gate = StepSequencer(burst_steps, bpm=bpm, step_length=1.0).cv()
 
     burst_env = adsr(attack=0.0005, decay=burst_dur - 0.001, sustain=0.0,
-                     sustain_level=0.0, release=0.0005)
+                     release=0.0005)
     bursts_dur = gate.duration
     noise_src = BandPassFilter(1000, 4000)(WhiteNoise().render(bursts_dur))
     bursts = noise_src * burst_env.trigger(gate) * 0.8
@@ -1462,11 +1462,11 @@ def polymetric_3_4(bpm=90):
     dur = melody_p.duration
 
     melody_audio = Oscillator("triangle").at(melody_p).render(dur)
-    melody_audio = melody_audio * adsr(0.01, 0.1, 0.3, 0.7, 0.1).trigger(melody_g) * 0.4
+    melody_audio = melody_audio * adsr(0.01, 0.1, 0.7, 0.1).trigger(melody_g) * 0.4
 
     bass_gen = Oscillator("saw") + Oscillator("saw", ratio=2) * 0.3
     bass_audio = bass_gen.at(bass_p * 0.5).render(dur)
-    bass_audio = bass_audio * adsr(0.01, 0.15, 0.4, 0.6, 0.15).trigger(bass_g) * 0.5
+    bass_audio = bass_audio * adsr(0.01, 0.15, 0.6, 0.15).trigger(bass_g) * 0.5
     bass_audio = LowPassFilter(800)(bass_audio)
 
     return DatorroReverb(decay=0.4, wet=0.2)(melody_audio + bass_audio)
@@ -1489,7 +1489,7 @@ def polymetric_phasing(bpm=120):
     signals = seq.cv(beats=64)
 
     osc = Oscillator('sine')
-    env = adsr(0.01, 0.02, 0.15, 0.6, 0.01)
+    env = adsr(0.01, 0.02, 0.6, 0.01)
     pitch_a, gate_a = signals["voice_a"]
     pitch_b, gate_b = signals["voice_b"]
     audio_a = osc.at(pitch_a).render(pitch_a.duration) * env.trigger(gate_a)
@@ -1519,11 +1519,11 @@ def polymetric_notation(bpm=100):
     dur = high_p.duration
 
     high_audio = Oscillator("sine").at(high_p).render(dur)
-    high_audio = high_audio * adsr(0.005, 0.1, 0.2, 0.5, 0.08).trigger(high_g) * 0.35
+    high_audio = high_audio * adsr(0.005, 0.1, 0.5, 0.08).trigger(high_g) * 0.35
 
     low_gen = Oscillator("triangle") + Oscillator("triangle", ratio=2) * 0.2
     low_audio = low_gen.at(low_p * 0.5).render(dur)
-    low_audio = low_audio * adsr(0.01, 0.15, 0.3, 0.7, 0.12).trigger(low_g) * 0.45
+    low_audio = low_audio * adsr(0.01, 0.15, 0.7, 0.12).trigger(low_g) * 0.45
 
     mx = Mixer()
     mx.add_track(high_audio, volume=0.7, position=0.4)
@@ -1559,8 +1559,8 @@ def sample_melody():
     dur = pitch.duration
 
     audio = s.at(pitch).render(dur)
-    env = adsr(0.01, 0.1, 0.3, 0.7, 0.15).trigger(gate)
-    cutoff = adsr(0.005, 0.15, 0.0, 0.0, 0.05).trigger(gate) * 3000 + 400
+    env = adsr(0.01, 0.1, 0.7, 0.15).trigger(gate)
+    cutoff = adsr(0.005, 0.15, 0.0, 0.05).trigger(gate) * 3000 + 400
     return LowPassFilter(cutoff)(audio) * env
 
 
@@ -1581,7 +1581,7 @@ def sample_loop():
     n = int(dur * sr)
     # Attack portion (first 0.1s) + looped sustain (0.1s–0.3s)
     sig = Oscillator("triangle").at(330).render(dur)
-    env_data = adsr(0.01, 0.05, 0.3, 0.8, 0.1).render(dur).data
+    env_data = adsr(0.01, 0.05, 0.8, 0.1).render(dur).data
     sig = sig * Signal(env_data, sr)
     s = Sample(sig.data, sr, root_pitch=330,
               loop_start=int(0.1 * sr), loop_end=int(0.3 * sr))
@@ -1634,7 +1634,7 @@ def granular_pitched(bpm=100):
 
     grain = Granular(s, position=0.4, grain_size=0.05, density=30, spread=0.01, seed=5)
     audio = grain.at(pitch).render(dur)
-    env = adsr(0.02, 0.15, 0.4, 0.7, 0.2).trigger(gate)
+    env = adsr(0.02, 0.15, 0.7, 0.2).trigger(gate)
     return DatorroReverb(decay=0.5, wet=0.3)(audio * env) * 0.5
 
 

@@ -43,9 +43,7 @@ def _envelope_trigger(gate_data, out, seg_data, offsets, n_segs, sustain_node, s
             else:
                 seg_idx += 1
                 seg_pos = 0
-                if sustain_node >= 0 and seg_idx == sustain_node and g > 0.0:
-                    level = sustain_level
-                elif seg_idx < n_segs:
+                if seg_idx < n_segs:
                     seg_start2 = offsets[seg_idx]
                     seg_len2 = offsets[seg_idx + 1] - seg_start2
                     if seg_pos < seg_len2:
@@ -137,24 +135,34 @@ class Envelope:
     def render(self, duration: float | None = None, sample_rate: int | None = None) -> Signal:
         """Return the envelope as a Signal.
 
-        If ``duration`` is given the envelope is truncated or zero-padded to
-        match the requested length. Otherwise the natural length
-        (sum of all segment durations) is used.
+        Internally delegates to :meth:`trigger` with a synthetic gate.
+        For sustain-node envelopes the gate drops before the end to allow
+        the release phase; for one-shot envelopes the gate stays high.
 
-        If ``sample_rate`` is given it overrides the envelope's default.
+        If ``duration`` is ``None`` the natural length (sum of segment
+        durations) is used.  If ``sample_rate`` is given it overrides the
+        envelope's default.
         """
         sr = sample_rate if sample_rate is not None else self.sample_rate
-        parts = [seg.render(sr) for seg in self.segments]
-        env = np.concatenate(parts).astype(np.float32) if parts else np.empty(0, dtype=np.float32)
 
-        if duration is not None:
-            n = int(duration * sr)
-            if len(env) >= n:
-                env = env[:n]
-            else:
-                env = np.pad(env, (0, n - len(env))).astype(np.float32)
+        if duration is None:
+            duration = sum(seg.duration for seg in self.segments)
 
-        return Signal(env, sr)
+        n = int(duration * sr)
+        if n == 0:
+            return Signal(np.empty(0, dtype=np.float32), sr)
+
+        if self.sustain_node is not None:
+            release_dur = sum(
+                seg.duration for seg in self.segments[self.sustain_node + 1:]
+            )
+            n_high = max(0, n - int(release_dur * sr))
+            gate_data = np.zeros(n, dtype=np.float32)
+            gate_data[:n_high] = 1.0
+        else:
+            gate_data = np.ones(n, dtype=np.float32)
+
+        return self.trigger(Signal(gate_data, sr))
 
     def apply(self, signal: Signal) -> Signal:
         """Multiply a signal by this envelope. Returns a new Signal."""
@@ -215,7 +223,6 @@ def adsr(
     attack: float,
     decay: float,
     sustain: float,
-    sustain_level: float,
     release: float,
     sample_rate: int = SAMPLE_RATE,
 ) -> Envelope:
@@ -223,19 +230,16 @@ def adsr(
 
     Parameters
     ----------
-    attack:       rise time from 0 to 1 (seconds)
-    decay:        fall time from 1 to sustain_level (seconds)
-    sustain:      duration of the sustain phase (seconds)
-    sustain_level: amplitude held during sustain (0..1)
-    release:      fall time from sustain_level to 0 (seconds)
+    attack:  rise time from 0 to 1 (seconds)
+    decay:   fall time from 1 to *sustain* (seconds)
+    sustain: amplitude held while the gate is high (0..1)
+    release: fall time from *sustain* to 0 (seconds)
     """
-    return Envelope(
-        [
+    return Envelope([
             Segment(attack, 0.0, 1.0),
-            Segment(decay, 1.0, sustain_level),
-            Segment(sustain, sustain_level, sustain_level),
-            Segment(release, sustain_level, 0.0),
+            Segment(decay, 1.0, sustain),
+            Segment(release, sustain, 0.0),
         ],
-        sustain_node=2,
+        sustain_node=1,
         sample_rate=sample_rate,
     )

@@ -68,7 +68,7 @@ def bench_dattorro_reverb():
 def bench_envelope():
     from pysynth.envelopes.envelope import adsr
 
-    env = adsr(0.01, 0.1, 0.3, 0.7, 0.1)
+    env = adsr(0.01, 0.1, 0.7, 0.1)
     # Gate: 120 bpm, 50% duty cycle = note every 0.5s, gate high for 0.25s
     gate_data = np.zeros(N, dtype=np.float32)
     period = int(SR * 0.5)
