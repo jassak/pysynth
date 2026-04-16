@@ -73,11 +73,13 @@ class TestStepSequencerCv:
         # Last quarter should be zero
         assert gate.data[total - 1] == pytest.approx(0.0)
 
-    def test_rest_produces_zero(self):
+    def test_rest_holds_value_zeros_gate(self):
         steps = [Step(440.0), Step.rest(), Step(880.0)]
         val, gate = StepSequencer(steps, bpm=BPM).cv(sample_rate=SR)
         rest_mid = _step_samples() + _step_samples() // 2
-        assert val.data[rest_mid] == 0.0
+        # Value holds last active value (sample-and-hold) so the
+        # oscillator keeps producing audio for the envelope's release.
+        assert val.data[rest_mid] == pytest.approx(440.0)
         assert gate.data[rest_mid] == 0.0
 
     def test_tie_holds_value(self):

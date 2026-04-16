@@ -161,6 +161,7 @@ class PolySequencer:
             gate_buf = np.zeros(total_samples, dtype=np.float32)
 
             prev_end_beat = -1.0
+            last_hz = 0.0
             for onset, note in voice_events:
                 start = int(onset * beat_duration * sample_rate)
                 dur_samples = int(note.duration * beat_duration * sample_rate)
@@ -173,7 +174,18 @@ class PolySequencer:
                     if prev_end_beat >= onset and gap_samples > 0:
                         gap_end = min(start + gap_samples, end)
                         gate_buf[start:gap_end] = 0.0
+                    last_hz = note.pitch.hz
                     prev_end_beat = onset + note.duration
+
+            # Sample-and-hold: forward-fill pitch so the oscillator
+            # continues producing audio through gaps for the envelope's
+            # release phase.
+            if last_hz > 0.0:
+                mask = pitch_buf != 0.0
+                if mask.any():
+                    idx = np.where(mask, np.arange(total_samples), 0)
+                    np.maximum.accumulate(idx, out=idx)
+                    pitch_buf = pitch_buf[idx]
 
             result.append((Signal(pitch_buf, sample_rate), Signal(gate_buf, sample_rate)))
 

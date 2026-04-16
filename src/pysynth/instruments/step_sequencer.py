@@ -134,6 +134,11 @@ class StepSequencer:
                 gate_buf[start:end] = 1.0
                 # ties keep prev_was_active as-is (no retrigger needed)
             elif step.is_rest:
+                # Sample-and-hold: keep the last value through rests
+                # so the oscillator continues producing audio for the
+                # envelope's release phase.
+                if prev_value != 0.0:
+                    value_buf[start:end] = prev_value
                 prev_was_active = False
             else:
                 value_buf[start:end] = step.value

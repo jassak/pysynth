@@ -1,3 +1,5 @@
+import pytest
+
 from pysynth._core import SAMPLE_RATE, Signal
 from pysynth.music.pitch import Pitch, Note
 from pysynth.instruments.poly import PolySequencer
@@ -89,7 +91,7 @@ class TestCvOutput:
         expected = 3.0 * 60.0 / 120.0  # 3 beats at 120 bpm = 1.5s
         assert abs(durations[0] - expected) < 0.01
 
-    def test_gap_produces_zero_gate(self):
+    def test_gap_holds_pitch_zeros_gate(self):
         events = [
             (0.0, Note(Pitch(440), 1.0)),  # beats 0-1
             (2.0, Note(Pitch(440), 1.0)),  # beats 2-3 (gap at beat 1-2)
@@ -97,10 +99,12 @@ class TestCvOutput:
         voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
         pitch, gate = voices[0]
 
-        # In the gap (beat 1.5), gate should be 0
+        # In the gap (beat 1.5), gate should be 0 but pitch holds
+        # (sample-and-hold) so the oscillator keeps producing audio
+        # for the envelope's release phase.
         gap_sample = _samples(1.5)
         assert gate.data[gap_sample] == 0.0
-        assert pitch.data[gap_sample] == 0.0
+        assert pitch.data[gap_sample] == pytest.approx(440.0)
 
     def test_velocity_preserved(self):
         events = [

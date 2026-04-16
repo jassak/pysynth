@@ -94,6 +94,7 @@ class Sequencer:
 
         offset = 0
         prev_was_note = False
+        last_hz = 0.0
         for note in notes:
             dur_samples = int(note.duration * beat_duration * sample_rate)
             end = min(offset + dur_samples, total_samples)
@@ -106,8 +107,14 @@ class Sequencer:
                 if prev_was_note and gap_samples > 0:
                     gap_end = min(offset + gap_samples, end)
                     gate_buf[offset:gap_end] = 0.0
+                last_hz = note.pitch.hz
                 prev_was_note = True
             else:
+                # Sample-and-hold: keep the last pitch through rests
+                # so the oscillator continues producing audio for the
+                # envelope's release phase.
+                if last_hz > 0.0:
+                    pitch_buf[offset:end] = last_hz
                 prev_was_note = False
             offset = end
 

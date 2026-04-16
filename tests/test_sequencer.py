@@ -41,11 +41,13 @@ class TestSequencerCv:
         mid = _samples(0.5)
         assert gate.data[mid] == pytest.approx(0.7)
 
-    def test_rest_produces_zero(self):
+    def test_rest_holds_pitch_zeros_gate(self):
         notes = [Note(Pitch(440), 1.0), Note.rest(1.0), Note(Pitch(880), 1.0)]
         pitch, gate = Sequencer(notes, bpm=120).cv(sample_rate=SR)
         rest_mid = _samples(1.5)
-        assert pitch.data[rest_mid] == 0.0
+        # Pitch holds last value (sample-and-hold) so the oscillator
+        # keeps producing audio for the envelope's release phase.
+        assert pitch.data[rest_mid] == pytest.approx(440.0)
         assert gate.data[rest_mid] == 0.0
 
     def test_repeats(self):

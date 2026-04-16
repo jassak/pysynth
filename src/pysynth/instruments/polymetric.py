@@ -119,6 +119,7 @@ class PolymetricSequencer:
             step_dur = sl * beat_dur
 
             prev_was_active = False
+            last_hz = 0.0
             step_index = 0
 
             while True:
@@ -130,6 +131,11 @@ class PolymetricSequencer:
                 degree = pattern[step_index % pattern_len]
 
                 if degree is None:
+                    # Sample-and-hold: keep the last pitch through rests
+                    # so the oscillator continues producing audio for the
+                    # envelope's release phase.
+                    if last_hz > 0.0:
+                        pitch_buf[start:end] = last_hz
                     prev_was_active = False
                 else:
                     hz = self.scale[degree].hz
@@ -141,6 +147,7 @@ class PolymetricSequencer:
                         gap_end = min(start + gap_samples, gate_end)
                         gate_buf[start:gap_end] = 0.0
 
+                    last_hz = hz
                     prev_was_active = True
 
                 step_index += 1

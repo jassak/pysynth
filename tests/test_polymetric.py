@@ -40,13 +40,25 @@ class TestPolymetricSequencerCv:
         assert len(active) > 0
         np.testing.assert_allclose(active, 300.0, atol=1e-3)
 
-    def test_rest_produces_zero(self):
+    def test_all_rests_produces_zero(self):
         seq = PolymetricSequencer({"x": [None, None]}, SCALE, bpm=60,
                                    step_length=1.0)
         signals = seq.cv(beats=2, sample_rate=SR)
         pitch, gate = signals["x"]
         assert np.all(pitch.data == 0.0)
         assert np.all(gate.data == 0.0)
+
+    def test_rest_holds_pitch_zeros_gate(self):
+        seq = PolymetricSequencer({"x": [2, None]}, SCALE, bpm=60,
+                                   step_length=1.0, gate_length=1.0,
+                                   retrigger_gap=0.0)
+        signals = seq.cv(beats=2, sample_rate=SR)
+        pitch, gate = signals["x"]
+        rest_mid = int(1.5 * SR)
+        # Pitch holds last value (sample-and-hold) so the oscillator
+        # keeps producing audio for the envelope's release phase.
+        np.testing.assert_allclose(pitch.data[rest_mid], 300.0, atol=1e-3)
+        assert gate.data[rest_mid] == 0.0
 
 
 class TestPolymetricSequencerLooping:
