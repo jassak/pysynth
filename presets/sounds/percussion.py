@@ -5,6 +5,7 @@ has no pitch dimension.  Sequence them with ``Percussion(sample).trigger(gate)``
 """
 
 from __future__ import annotations
+from argparse import Namespace
 
 import numpy as np
 
@@ -13,6 +14,8 @@ from pysynth.effects import (
     HighPassFilter, BandPassFilter, SimpleReverb, Clip,
 )
 from pysynth.envelopes import Segment, Envelope
+
+__all__ = ["TR808", "TR909"]
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +159,17 @@ def tr808_rimshot() -> Signal:
     return tone * 0.6 + noise * 0.4
 
 
+TR808 = Namespace(
+    kick=tr808_kick,
+    snare=tr808_snare,
+    hihat=tr808_hihat,
+    clap=tr808_clap,
+    cowbell=tr808_cowbell,
+    tom=tr808_tom,
+    rimshot=tr808_rimshot,
+)
+
+
 # ---------------------------------------------------------------------------
 # TR-909
 # ---------------------------------------------------------------------------
@@ -256,3 +270,12 @@ def tr909_ride(dur: float = 0.6) -> Signal:
         Segment(dur * 0.7 - 0.001, 0.4, 0.0, curve=2),
     ])
     return env.apply(filtered) * 0.35
+
+
+TR909 = Namespace(
+    kick=tr909_kick,
+    snare=tr909_snare,
+    hihat=tr909_hihat,
+    clap=tr909_clap,
+    ride=tr909_ride,
+)

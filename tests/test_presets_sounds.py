@@ -13,9 +13,7 @@ from presets.sounds import (
     acid_bass, sub_bass, detuned_saw,
     ambient_pad, string_pad,
     pluck, bell, fm_bass, fm_metal,
-    tr808_kick, tr808_snare, tr808_hihat, tr808_clap,
-    tr808_cowbell, tr808_tom, tr808_rimshot,
-    tr909_kick, tr909_snare, tr909_hihat, tr909_clap, tr909_ride,
+    TR808, TR909,
 )
 from presets.scales import major
 from presets.pitches import C
@@ -133,69 +131,69 @@ class TestCVGateWorkflow:
 
 class TestPercussion808:
     def test_kick(self):
-        sig = tr808_kick()
+        sig = TR808.kick()
         assert isinstance(sig, Signal)
         assert not np.all(sig.data == 0)
 
     def test_kick_custom_decay(self):
-        short = tr808_kick(decay=0.3)
-        long = tr808_kick(decay=1.0)
+        short = TR808.kick(decay=0.3)
+        long = TR808.kick(decay=1.0)
         assert len(short.data) < len(long.data)
 
     def test_snare(self):
-        sig = tr808_snare()
+        sig = TR808.snare()
         assert isinstance(sig, Signal)
         assert not np.all(sig.data == 0)
 
     def test_hihat_closed(self):
-        sig = tr808_hihat(open=False)
+        sig = TR808.hihat(open=False)
         assert isinstance(sig, Signal)
 
     def test_hihat_open(self):
-        sig = tr808_hihat(open=True)
+        sig = TR808.hihat(open=True)
         assert isinstance(sig, Signal)
         # open hat should be longer
-        assert len(sig.data) > len(tr808_hihat(open=False).data)
+        assert len(sig.data) > len(TR808.hihat(open=False).data)
 
     def test_clap(self):
-        sig = tr808_clap()
+        sig = TR808.clap()
         assert isinstance(sig, Signal)
 
     def test_cowbell(self):
-        sig = tr808_cowbell()
+        sig = TR808.cowbell()
         assert isinstance(sig, Signal)
 
     def test_tom(self):
-        sig = tr808_tom()
+        sig = TR808.tom()
         assert isinstance(sig, Signal)
 
     def test_rimshot(self):
-        sig = tr808_rimshot()
+        sig = TR808.rimshot()
         assert isinstance(sig, Signal)
 
 
 class TestPercussion909:
     def test_kick(self):
-        sig = tr909_kick()
+        sig = TR909.kick()
         assert isinstance(sig, Signal)
         assert not np.all(sig.data == 0)
 
     def test_snare(self):
-        sig = tr909_snare()
+        sig = TR909.snare()
         assert isinstance(sig, Signal)
 
     def test_hihat_closed(self):
-        sig = tr909_hihat(open=False)
+        sig = TR909.hihat(open=False)
         assert isinstance(sig, Signal)
 
     def test_hihat_open(self):
-        sig = tr909_hihat(open=True)
+        sig = TR909.hihat(open=True)
         assert isinstance(sig, Signal)
 
     def test_clap(self):
-        sig = tr909_clap()
+        sig = TR909.clap()
         assert isinstance(sig, Signal)
 
     def test_ride(self):
-        sig = tr909_ride()
+        sig = TR909.ride()
         assert isinstance(sig, Signal)
