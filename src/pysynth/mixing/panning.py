@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from pysynth._core import Signal
+from pysynth._core import Signal, _as_array
 
 
-def pan(signal: Signal, position: float) -> Signal:
+def pan(signal: Signal, position: float | Signal) -> Signal:
     """Apply equal-power stereo panning to a signal.
 
     Converts a mono signal to stereo, or adjusts the balance of a stereo
@@ -18,12 +18,18 @@ def pan(signal: Signal, position: float) -> Signal:
         Input signal. Mono or stereo.
     position:
         Pan position in [-1, 1]. -1 = full left, 0 = centre, +1 = full right.
+        Can be a time-varying Signal for automated panning.
 
     Returns a new stereo Signal with shape (n_samples, 2).
     """
-    position = float(np.clip(position, -1.0, 1.0))
+    n = len(signal.data)
+    if isinstance(position, Signal):
+        pos = np.clip(_as_array(position, n), -1.0, 1.0)
+    else:
+        pos = float(np.clip(position, -1.0, 1.0))
+
     # Map [-1, 1] to [0, π/2]; equal-power law: L=cos(θ), R=sin(θ)
-    angle = (position + 1.0) * np.pi / 4.0
+    angle = (pos + 1.0) * np.pi / 4.0
     left_gain = np.cos(angle)
     right_gain = np.sin(angle)
 
