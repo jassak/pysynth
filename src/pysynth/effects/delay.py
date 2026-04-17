@@ -62,17 +62,23 @@ class Delay(Effect):
             )
         delay_samples = int(self.delay_time * sig.sample_rate)
         x = sig.data
-        n = len(x)
-        buf = np.zeros(n + delay_samples, dtype=np.float32)
-        buf[:n] = x
-        out = buf.copy()
+        if x.ndim == 2:
+            channels = [
+                _fixed_delay_mono(x[:, c], self.feedback, delay_samples, self.wet)
+                for c in range(x.shape[1])
+            ]
+            return Signal(np.column_stack(channels).astype(np.float32), sig.sample_rate)
+        return Signal(_fixed_delay_mono(x, self.feedback, delay_samples, self.wet), sig.sample_rate)
 
-        _fixed_delay_feedback(out, self.feedback, delay_samples, delay_samples, n + delay_samples)
 
-        # Trim back to original length
-        out = out[:n]
-        mixed = (1.0 - self.wet) * x + self.wet * out
-        return Signal(mixed.astype(np.float32), sig.sample_rate)
+def _fixed_delay_mono(x: np.ndarray, feedback: float, delay_samples: int, wet: float) -> np.ndarray:
+    n = len(x)
+    buf = np.zeros(n + delay_samples, dtype=np.float32)
+    buf[:n] = x
+    out = buf.copy()
+    _fixed_delay_feedback(out, feedback, delay_samples, delay_samples, n + delay_samples)
+    out = out[:n]
+    return ((1.0 - wet) * x + wet * out).astype(np.float32)
 
 
 def _modulated_delay(
@@ -89,13 +95,31 @@ def _modulated_delay(
     """
     n = len(x)
     delay_arr = _as_array(delay_sig, n)
+    if x.ndim == 2:
+        channels = []
+        for c in range(x.shape[1]):
+            x64 = x[:, c].astype(np.float64)
+            out = x64.copy()
+            _modulated_delay_loop(out, delay_arr, sr, feedback)
+            channels.append(((1.0 - wet) * x64 + wet * out).astype(np.float32))
+        return np.column_stack(channels)
     x64 = x.astype(np.float64)
     out = x64.copy()
-
     _modulated_delay_loop(out, delay_arr, sr, feedback)
-
     mixed = (1.0 - wet) * x64 + wet * out
     return mixed.astype(np.float32)
+
+
+def _echo_mono(x: np.ndarray, n: int, extra: int, delay_samples: int, repeats: int, decay: float, wet: float) -> np.ndarray:
+    out = np.zeros(n + extra, dtype=np.float32)
+    out[:n] = x
+    amp = decay
+    for tap in range(1, repeats + 1):
+        offset = delay_samples * tap
+        out[offset : offset + n] += x * amp
+        amp *= decay
+    out = out[:n]
+    return ((1.0 - wet) * x + wet * out).astype(np.float32)
 
 
 class Echo(Effect):
@@ -122,15 +146,10 @@ class Echo(Effect):
         x = sig.data
         n = len(x)
         extra = delay_samples * self.repeats
-        out = np.zeros(n + extra, dtype=np.float32)
-        out[:n] = x
-
-        amp = self.decay
-        for tap in range(1, self.repeats + 1):
-            offset = delay_samples * tap
-            out[offset : offset + n] += x * amp
-            amp *= self.decay
-
-        out = out[:n]
-        mixed = (1.0 - self.wet) * x + self.wet * out
-        return Signal(mixed.astype(np.float32), sig.sample_rate)
+        if x.ndim == 2:
+            channels = [
+                _echo_mono(x[:, c], n, extra, delay_samples, self.repeats, self.decay, self.wet)
+                for c in range(x.shape[1])
+            ]
+            return Signal(np.column_stack(channels).astype(np.float32), sig.sample_rate)
+        return Signal(_echo_mono(x, n, extra, delay_samples, self.repeats, self.decay, self.wet), sig.sample_rate)
