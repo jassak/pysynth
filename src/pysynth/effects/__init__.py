@@ -1,4 +1,5 @@
 from pysynth.effects.filters import LowPassFilter, HighPassFilter, BandPassFilter
+from pysynth.effects.eq import PeakFilter, LowShelf, HighShelf
 from pysynth.effects.dynamics import Gain, Compressor, Limiter
 from pysynth.effects.reverb import SimpleReverb, DatorroReverb
 from pysynth.effects.delay import Delay, Echo
@@ -8,6 +9,9 @@ __all__ = [
     "LowPassFilter",
     "HighPassFilter",
     "BandPassFilter",
+    "PeakFilter",
+    "LowShelf",
+    "HighShelf",
     "Gain",
     "Compressor",
     "Limiter",
