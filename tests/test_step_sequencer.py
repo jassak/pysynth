@@ -111,7 +111,8 @@ class TestStepSequencerCv:
         assert val.data[mid] == pytest.approx(440.0)
 
     def test_slide_creates_ramp(self):
-        steps = [Step(200.0, gate_length=1.0), Step(400.0, slide=True)]
+        # TB-303 style: slide on step 0 glides into step 1's value
+        steps = [Step(200.0, gate_length=1.0, slide=True), Step(400.0)]
         seq = StepSequencer(steps, bpm=BPM, slide_time=0.05)
         val, _ = seq.cv(sample_rate=SR)
         boundary = _step_samples()
@@ -120,7 +121,8 @@ class TestStepSequencerCv:
         assert 200.0 < val.data[sample] < 400.0
 
     def test_slide_endpoints(self):
-        steps = [Step(200.0, gate_length=1.0), Step(400.0, slide=True)]
+        # TB-303 style: slide on step 0 glides into step 1's value
+        steps = [Step(200.0, gate_length=1.0, slide=True), Step(400.0)]
         seq = StepSequencer(steps, bpm=BPM, slide_time=0.05)
         val, _ = seq.cv(sample_rate=SR)
         boundary = _step_samples()
@@ -128,8 +130,9 @@ class TestStepSequencerCv:
         ramp_start = boundary - slide_samples
         # Start of ramp should be close to 200
         assert val.data[ramp_start] == pytest.approx(200.0, abs=5.0)
-        # At boundary, should be 400 (filled by the step itself)
-        assert val.data[boundary] == pytest.approx(400.0)
+        # Just after boundary, should be close to 400
+        ramp_end = boundary + slide_samples
+        assert val.data[ramp_end - 1] == pytest.approx(400.0, abs=5.0)
 
     def test_empty_sequence(self):
         val, gate = StepSequencer([], bpm=BPM).cv(sample_rate=SR)

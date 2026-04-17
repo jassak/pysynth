@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from pysynth._core import SAMPLE_RATE, Signal
+from pysynth.music import Pitch
 
 _TIE_SENTINEL = float("nan")
 
@@ -23,6 +24,10 @@ class Step:
     value: float
     gate_length: float = 0.75
     slide: bool = False
+
+    def __post_init__(self) -> None:
+        if isinstance(self.value, Pitch):
+            object.__setattr__(self, "value", self.value.hz)
 
     @classmethod
     def rest(cls) -> Step:
@@ -151,26 +156,35 @@ class StepSequencer:
                 prev_value = step.value
                 prev_was_active = True
 
-        # Slide pass
+        # Slide pass — TB-303 style: a step with slide=True glides into the
+        # *next* step's value.  The ramp straddles the boundary between this
+        # step and the next.
         slide_samples = int(self.slide_time * sample_rate)
         for i, step in enumerate(steps):
-            if not step.slide or step.is_rest or step.is_tie or i == 0:
+            if not step.slide or step.is_rest or step.is_tie:
                 continue
-            # Find the previous active value
-            prev_val = 0.0
-            for j in range(i - 1, -1, -1):
+            # Find the next active value
+            next_val = None
+            for j in range(i + 1, len(steps)):
                 if steps[j].is_tie:
                     continue
                 if not steps[j].is_rest:
-                    prev_val = steps[j].value
+                    next_val = steps[j].value
                     break
+            if next_val is None or next_val == step.value:
+                continue
 
-            boundary = step_starts[i]
+            # Place the ramp centred on the boundary to the next step
+            if i + 1 < len(step_starts):
+                boundary = step_starts[i + 1]
+            else:
+                continue
             ramp_start = max(boundary - slide_samples, 0)
-            ramp_len = boundary - ramp_start
-            if ramp_len > 0 and prev_val != step.value:
-                ramp = np.linspace(prev_val, step.value, ramp_len, dtype=np.float32)
-                value_buf[ramp_start:boundary] = ramp
+            ramp_end = min(boundary + slide_samples, total_samples)
+            ramp_len = ramp_end - ramp_start
+            if ramp_len > 0:
+                ramp = np.linspace(step.value, next_val, ramp_len, dtype=np.float32)
+                value_buf[ramp_start:ramp_end] = ramp
 
         return Signal(value_buf, sample_rate), Signal(gate_buf, sample_rate)
 
