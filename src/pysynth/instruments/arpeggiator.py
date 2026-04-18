@@ -44,7 +44,7 @@ class Arpeggiator:
         scale = Scale(220, [1, 5/4, 3/2, 2])
         chord = [Note(scale[i], 0.25) for i in [0, 1, 2, 3]]
         pitch, gate = Arpeggiator(chord, pattern="up", bpm=140).cv(bars=4)
-        audio = Oscillator("triangle").at(pitch).render(pitch.duration)
+        audio = Oscillator("triangle").render(pitch.duration, pitch)
         output = audio * adsr(0.005, 0.05, 0.5, 0.05).trigger(gate)
     """
 

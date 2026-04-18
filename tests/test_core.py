@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from pysynth._core import SAMPLE_RATE, Signal, Effect, _Chain, Generator, _as_array
+from pysynth._core import SAMPLE_RATE, Signal, Effect, _Chain, _as_array
 
 
 SR = 1000  # low sample rate for fast tests
@@ -425,25 +425,6 @@ class TestEffect:
         # Double first (3*2=6), then add one (6+1=7)
         np.testing.assert_allclose(result.data, [7.0], atol=1e-6)
 
-
-# ------------------------------------------------------------------ #
-# Generator                                                            #
-# ------------------------------------------------------------------ #
-
-
-class TestGenerator:
-    def test_render(self):
-        gen = Generator(lambda dur, sr: Signal.silence(dur, sr))
-        sig = gen.render(0.5, SR)
-        assert abs(sig.duration - 0.5) < 1e-6
-
-    def test_repr_with_name(self):
-        gen = Generator(lambda d, s: None, name="test")
-        assert "test" in repr(gen)
-
-    def test_repr_without_name(self):
-        gen = Generator(lambda d, s: None)
-        assert "..." in repr(gen)
 
 
 # ------------------------------------------------------------------ #

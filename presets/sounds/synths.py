@@ -105,7 +105,7 @@ class FMSynth:
             if mod_signal is not None:
                 freq = freq + mod_signal
 
-            raw = Oscillator(mod.waveform).at(freq).render(dur)
+            raw = Oscillator(mod.waveform).render(dur, freq)
             deviation = hz * mod.index
 
             if mod.envelope is not None:
@@ -115,7 +115,7 @@ class FMSynth:
                 mod_signal = raw * deviation
 
         carrier_freq = hz + mod_signal if mod_signal is not None else hz
-        audio = Oscillator(self._carrier).at(carrier_freq).render(dur)
+        audio = Oscillator(self._carrier).render(dur, carrier_freq)
 
         if self._envelope is not None:
             audio = audio * self._envelope.trigger(gate)

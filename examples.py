@@ -12,7 +12,7 @@ Everything is a function to keep import fast. Call it to get a Signal:
   >>> melody().play()
 """
 
-from pysynth import ( SAMPLE_RATE, Signal, Generator, Oscillator, WhiteNoise,
+from pysynth import ( SAMPLE_RATE, Signal, Oscillator, WhiteNoise,
     PinkNoise, Wavetable, Segment, Envelope, adsr, LowPassFilter, HighPassFilter,
     BandPassFilter, Gain, Compressor, Limiter, SimpleReverb, DatorroReverb, Delay,
     Echo, Tanh, Clip, Overdrive, Pitch, Note, Scale, Sequencer, Step, StepSequencer,
@@ -45,20 +45,20 @@ pad_env = adsr(attack=0.3, decay=0.2, sustain=0.8, release=0.5)
 
 
 def sine_tone(hz=440, dur=DUR):
-    return Oscillator("sine").at(hz).render(dur)
+    return Oscillator("sine").render(dur, hz)
 
 
 def square_tone(hz=220, dur=DUR):
-    return Oscillator("square").at(hz).render(dur)
+    return Oscillator("square").render(dur, hz)
 
 
 def saw_tone(hz=110, dur=DUR):
-    return Oscillator("saw").at(hz).render(dur)
+    return Oscillator("saw").render(dur, hz)
 
 
 def pluck(hz=440):
     """Short plucked sine — good for testing envelopes."""
-    return pluck_env.apply(Oscillator("sine").at(hz).render(0.6))
+    return pluck_env.apply(Oscillator("sine").render(0.6, hz))
 
 
 # ---------------------------------------------------------------------------
@@ -78,13 +78,13 @@ def organ(hz=220, dur=DUR):
         + Oscillator("sine", ratio=8) * 0.10
         + Oscillator("sine", ratio=10) * 0.05
     )
-    return osc.at(hz).render(dur) * 0.25
+    return osc.render(dur, hz) * 0.25
 
 
 def detuned_saw(hz=110, dur=DUR):
     """Two saws slightly detuned — fat unison sound."""
-    a = Oscillator("saw").at(hz * 1.004).render(dur)
-    b = Oscillator("saw").at(hz * 0.996).render(dur)
+    a = Oscillator("saw").render(dur, hz * 1.004)
+    b = Oscillator("saw").render(dur, hz * 0.996)
     return (a + b) * 0.35
 
 
@@ -95,21 +95,21 @@ def detuned_saw(hz=110, dur=DUR):
 
 def bell(hz=440, dur=DUR):
     """FM bell: carrier + 2x modulator, high index."""
-    mod = Oscillator("sine").at(hz * 2.0).render(dur) * (hz * 3.5)
-    sig = Oscillator("sine").at(hz + mod).render(dur)
+    mod = Oscillator("sine").render(dur, hz * 2.0) * (hz * 3.5)
+    sig = Oscillator("sine").render(dur, hz + mod)
     return bell_env.apply(sig)
 
 
 def fm_bass(hz=55, dur=DUR):
     """Wobbly FM sub-bass."""
-    mod = Oscillator("sine").at(hz * 0.5).render(dur) * (hz * 2.0)
-    return Oscillator("sine").at(hz + mod).render(dur)
+    mod = Oscillator("sine").render(dur, hz * 0.5) * (hz * 2.0)
+    return Oscillator("sine").render(dur, hz + mod)
 
 
 def fm_metal(hz=200, dur=DUR):
     """Inharmonic FM: irrational ratio makes it metallic."""
-    mod = Oscillator("sine").at(hz * 3.14).render(dur) * (hz * 8.0)
-    return Oscillator("sine").at(hz + mod).render(dur)
+    mod = Oscillator("sine").render(dur, hz * 3.14) * (hz * 8.0)
+    return Oscillator("sine").render(dur, hz + mod)
 
 
 # ---------------------------------------------------------------------------
@@ -119,22 +119,22 @@ def fm_metal(hz=200, dur=DUR):
 
 def vibrato(hz=440, rate=5.0, depth=15.0, dur=DUR):
     """Pitch LFO vibrato."""
-    lfo = Oscillator("sine").at(rate).render(dur) * depth
-    return Oscillator("sine").at(hz + lfo).render(dur)
+    lfo = Oscillator("sine").render(dur, rate) * depth
+    return Oscillator("sine").render(dur, hz + lfo)
 
 
 def tremolo(hz=440, rate=7.0, depth=0.4, dur=DUR):
     """Amplitude LFO tremolo."""
-    lfo = Oscillator("sine").at(rate).render(dur) * depth + (1.0 - depth)
-    return Oscillator("sine").at(hz).render(dur) * lfo
+    lfo = Oscillator("sine").render(dur, rate) * depth + (1.0 - depth)
+    return Oscillator("sine").render(dur, hz) * lfo
 
 
 def pitch_sweep(start_hz=200, end_hz=800, dur=DUR):
     """Slow sinusoidal pitch sweep between two frequencies."""
     mid = (start_hz + end_hz) / 2
     depth = (end_hz - start_hz) / 2
-    lfo = Oscillator("sine").at(0.5 / dur * 2).render(dur) * depth + mid
-    return Oscillator("sine").at(lfo).render(dur)
+    lfo = Oscillator("sine").render(dur, 0.5 / dur * 2) * depth + mid
+    return Oscillator("sine").render(dur, lfo)
 
 
 # ---------------------------------------------------------------------------
@@ -144,22 +144,22 @@ def pitch_sweep(start_hz=200, end_hz=800, dur=DUR):
 
 def lp_sweep(hz=110, dur=DUR):
     """Saw wave with LFO-swept low-pass filter (classic synth filter sweep)."""
-    src = Oscillator("saw").at(hz).render(dur) * 0.5
-    cutoff = Oscillator("sine").at(0.4).render(dur) * 1200 + 1400
+    src = Oscillator("saw").render(dur, hz) * 0.5
+    cutoff = Oscillator("sine").render(dur, 0.4) * 1200 + 1400
     return LowPassFilter(cutoff)(src)
 
 
 def wah(hz=110, rate=2.0, dur=DUR):
     """Band-pass wah-wah effect."""
-    src = Oscillator("saw").at(hz).render(dur) * 0.5
-    center = Oscillator("sine").at(rate).render(dur) * 600 + 900
+    src = Oscillator("saw").render(dur, hz) * 0.5
+    center = Oscillator("sine").render(dur, rate) * 600 + 900
     return BandPassFilter(center - 200, center + 200)(src)
 
 
 def resonant_sweep(hz=110, dur=DUR):
     """High-order low-pass with fast sweep — nasal / resonant character."""
-    src = Oscillator("saw").at(hz).render(dur) * 0.5
-    cutoff = Oscillator("sine").at(0.25).render(dur) * 2000 + 2200
+    src = Oscillator("saw").render(dur, hz) * 0.5
+    cutoff = Oscillator("sine").render(dur, 0.25) * 2000 + 2200
     return LowPassFilter(cutoff, order=8)(src)
 
 
@@ -176,7 +176,7 @@ def resonant_bass(bpm=120):
     pitch, gate = Sequencer(notes, bpm=bpm).cv(repeats=4)
     dur = pitch.duration
 
-    audio = Oscillator("square").at(pitch).render(dur) * 0.4
+    audio = Oscillator("square").render(dur, pitch) * 0.4
     amp = adsr(0.005, 0.15, 0.7, 0.06).trigger(gate)
     cutoff = adsr(0.005, 0.2, 0.0, 0.04).trigger(gate) * 3000 + 200
     return LowPassFilter(cutoff, resonance=0.75)(audio) * amp
@@ -184,8 +184,8 @@ def resonant_bass(bpm=120):
 
 def modulated_resonance(hz=110, dur=DUR):
     """Saw wave with slowly sweeping resonance — from clean to squelchy."""
-    src = Oscillator("saw").at(hz).render(dur) * 0.22
-    res = Oscillator("sine").at(0.4).render(dur) * 0.45 + 0.45  # 0.0 – 0.9
+    src = Oscillator("saw").render(dur, hz) * 0.22
+    res = Oscillator("sine").render(dur, 0.4) * 0.45 + 0.45  # 0.0 – 0.9
     return LowPassFilter(800, resonance=res)(src)
 
 
@@ -195,23 +195,23 @@ def modulated_resonance(hz=110, dur=DUR):
 
 
 def soft_clip(hz=110, dur=DUR):
-    return Tanh(drive=4.0)(Oscillator("saw").at(hz).render(dur) * 0.4)
+    return Tanh(drive=4.0)(Oscillator("saw").render(dur, hz) * 0.4)
 
 
 def hard_clip(hz=110, dur=DUR):
-    return Clip(threshold=0.3)(Oscillator("saw").at(hz).render(dur) * 0.6)
+    return Clip(threshold=0.3)(Oscillator("saw").render(dur, hz) * 0.6)
 
 
 def overdrive_tone(hz=110, dur=DUR):
     """Overdrive + low-pass to tame harshness."""
-    sig = Oscillator("saw").at(hz).render(dur) * 0.4
+    sig = Oscillator("saw").render(dur, hz) * 0.4
     return (Overdrive(gain=6.0, bias=0.1) | LowPassFilter(3000))(sig)
 
 
 def dynamic_drive(hz=110, dur=DUR):
     """Drive amount modulated by slow LFO."""
-    sig = Oscillator("saw").at(hz).render(dur) * 0.4
-    drive = Oscillator("sine").at(0.3).render(dur) * 3.0 + 4.0
+    sig = Oscillator("saw").render(dur, hz) * 0.4
+    drive = Oscillator("sine").render(dur, 0.3) * 3.0 + 4.0
     return Tanh(drive=drive)(sig)
 
 
@@ -230,8 +230,8 @@ def with_echo(signal: Signal, time=0.35, repeats=5) -> Signal:
 
 def flanger(hz=440, dur=DUR):
     """LFO-modulated short delay — classic flange sweep."""
-    src = Oscillator("sine").at(hz).render(dur)
-    lfo = Oscillator("sine").at(0.4).render(dur) * 0.003 + 0.005
+    src = Oscillator("sine").render(dur, hz)
+    lfo = Oscillator("sine").render(dur, 0.4) * 0.003 + 0.005
     return Delay(delay_time=lfo, feedback=0.6, wet=0.5)(src)
 
 
@@ -255,13 +255,13 @@ def hihat(open=False):
 
 def snare():
     env = adsr(0.001, 0.12, 0.0, 0.01)
-    return env.apply(WhiteNoise().render(0.15) * 0.6 + Oscillator("sine").at(180).render(0.15) * 0.4)
+    return env.apply(WhiteNoise().render(0.15) * 0.6 + Oscillator("sine").render(0.15, 180) * 0.4)
 
 
 def kick():
     env = adsr(0.001, 0.08, 0.0, 0.01)
-    pitch = Oscillator("sine").at(80).render(0.15) * 0.8
-    body = Oscillator("sine").at(40).render(0.15) * 0.2
+    pitch = Oscillator("sine").render(0.15, 80) * 0.8
+    body = Oscillator("sine").render(0.15, 40) * 0.2
     return env.apply(pitch + body)
 
 
@@ -294,7 +294,7 @@ def melody():
     """Ascending/descending ji-major scale on a sine oscillator."""
     notes = [Note(ji_major[i], 0.5) for i in [0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 0]]
     pitch, gate = Sequencer(notes, bpm=100).cv()
-    audio = Oscillator("sine").at(pitch).render(pitch.duration)
+    audio = Oscillator("sine").render(pitch.duration, pitch)
     return audio * note_env.trigger(gate)
 
 
@@ -310,7 +310,7 @@ def bass_line(repeats=2):
     ]
     gen = Oscillator("triangle") + Oscillator("triangle", ratio=2) * 0.3
     pitch, gate = Sequencer(notes, bpm=90).cv(repeats=repeats)
-    audio = gen.at(pitch).render(pitch.duration)
+    audio = gen.render(pitch.duration, pitch)
     return audio * bass_env.trigger(gate)
 
 
@@ -326,7 +326,7 @@ def pentatonic_groove(repeats=4):
     ]
     gen = Oscillator("square") + Oscillator("square", ratio=2) * 0.15
     pitch, gate = Sequencer(notes, bpm=120).cv(repeats=repeats)
-    audio = gen.at(pitch).render(pitch.duration)
+    audio = gen.render(pitch.duration, pitch)
     return audio * short_env.trigger(gate)
 
 
@@ -341,28 +341,28 @@ def _major_chord():
 
 def arp_up(bars=4, bpm=140):
     pitch, gate = Arpeggiator(_major_chord(), pattern="up", note_duration=0.25, bpm=bpm).cv(bars=bars)
-    audio = Oscillator("sine").at(pitch).render(pitch.duration)
+    audio = Oscillator("sine").render(pitch.duration, pitch)
     return audio * note_env.trigger(gate)
 
 
 def arp_updown(bars=4, bpm=160):
     pitch, gate = Arpeggiator(_major_chord(), pattern="up_down", note_duration=0.125, bpm=bpm).cv(bars=bars)
-    audio = Oscillator("triangle").at(pitch).render(pitch.duration)
+    audio = Oscillator("triangle").render(pitch.duration, pitch)
     return audio * short_env.trigger(gate)
 
 
 def arp_random(bars=4, bpm=120):
     gen = Oscillator("sine") + Oscillator("sine", ratio=3) * 0.3
     pitch, gate = Arpeggiator(_major_chord(), pattern="random", note_duration=0.25, bpm=bpm, octaves=2).cv(bars=bars)
-    audio = gen.at(pitch).render(pitch.duration)
+    audio = gen.render(pitch.duration, pitch)
     return audio * note_env.trigger(gate)
 
 
 def arp_fm(bars=4, bpm=80):
     """Arpeggiator using FM bells."""
     pitch, gate = Arpeggiator(_major_chord(), pattern="up", note_duration=0.5, bpm=bpm).cv(bars=bars)
-    mod = Oscillator("sine").at(pitch * 2.0).render(pitch.duration) * (pitch * 8.0)
-    audio = Oscillator("sine").at(pitch + mod).render(pitch.duration)
+    mod = Oscillator("sine").render(pitch.duration, pitch * 2.0) * (pitch * 8.0)
+    audio = Oscillator("sine").render(pitch.duration, pitch + mod)
     return audio * bell_env.trigger(gate)
 
 
@@ -384,7 +384,7 @@ def acid_bass(bpm=130):
     pitch, gate = Sequencer(notes, bpm=bpm).cv(repeats=4)
     dur = pitch.duration
 
-    audio = Oscillator("saw").at(pitch).render(dur) * 0.5
+    audio = Oscillator("saw").render(dur, pitch) * 0.5
     amp = adsr(0.005, 0.1, 0.8, 0.05).trigger(gate)
     cutoff = adsr(0.005, 0.15, 0.0, 0.03).trigger(gate) * 5000 + 300
     output = LowPassFilter(cutoff)(audio) * amp
@@ -449,7 +449,7 @@ def acid_303(bpm=138):
     ).cv(repeats=4)
 
     # -- Synthesis -------------------------------------------------------
-    audio = Oscillator("saw").at(pitch).render(dur) * 0.5
+    audio = Oscillator("saw").render(dur, pitch) * 0.5
 
     # Filter envelope opens on each gate, scaled by the cutoff lane
     filt_env = adsr(0.003, 0.12, 0.0, 0.02).trigger(gate)
@@ -471,8 +471,8 @@ def acid_303(bpm=138):
 def ambient_pad(dur=6.0):
     """Slow stereo pad: detuned saws, plate reverb, panned wide."""
     env = adsr(0.5, 0.3, 0.75, 0.7)
-    sig_l = env.apply(Oscillator("saw").at(220 * 1.003).render(dur)) * 0.3
-    sig_r = env.apply(Oscillator("saw").at(220 * 0.997).render(dur)) * 0.3
+    sig_l = env.apply(Oscillator("saw").render(dur, 220 * 1.003)) * 0.3
+    sig_r = env.apply(Oscillator("saw").render(dur, 220 * 0.997)) * 0.3
     plate = DatorroReverb(decay=0.85, bandwidth=0.9995, wet=0.5)
     mx = Mixer()
     mx.add_track(plate(sig_l), volume=0.8, position=-0.7)
@@ -488,8 +488,8 @@ def ambient_pad(dur=6.0):
 def wt_sweep(hz=220, dur=DUR):
     """Slow morph from sine through saw to square via LFO-driven position."""
     wt = Wavetable.from_waveforms(["sine", "saw", "square"])
-    lfo = Oscillator("triangle").at(0.3).render(dur) * 1.0 + 1.0  # sweeps 0→2
-    return wt.at(hz, position=lfo).render(dur) * 0.5
+    lfo = Oscillator("triangle").render(dur, 0.3) * 1.0 + 1.0  # sweeps 0→2
+    return wt.render(dur, hz, position=lfo) * 0.5
 
 
 def wt_pad(dur=6.0):
@@ -497,10 +497,10 @@ def wt_pad(dur=6.0):
     wt = Wavetable.from_waveforms(["sine", "triangle", "saw"])
     env = adsr(0.4, 0.3, 0.8, 0.6)
     # slow, slightly different position LFOs for left and right
-    pos_l = Oscillator("sine").at(0.08).render(dur) * 0.8 + 1.0
-    pos_r = Oscillator("sine").at(0.11).render(dur) * 0.8 + 1.0
-    sig_l = env.apply(wt.at(220 * 1.003, position=pos_l).render(dur)) * 0.3
-    sig_r = env.apply(wt.at(220 * 0.997, position=pos_r).render(dur)) * 0.3
+    pos_l = Oscillator("sine").render(dur, 0.08) * 0.8 + 1.0
+    pos_r = Oscillator("sine").render(dur, 0.11) * 0.8 + 1.0
+    sig_l = env.apply(wt.render(dur, 220 * 1.003, position=pos_l)) * 0.3
+    sig_r = env.apply(wt.render(dur, 220 * 0.997, position=pos_r)) * 0.3
     plate = DatorroReverb(decay=0.8, wet=0.45)
     mx = Mixer()
     mx.add_track(plate(sig_l), volume=0.8, position=-0.6)
@@ -524,7 +524,7 @@ def wt_bass(bpm=110):
 
     # position follows the filter envelope — brighter on attack
     pos_env = adsr(0.005, 0.2, 0.0, 0.05).trigger(gate) * 2.0
-    audio = wt.at(pitch, position=pos_env).render(dur) * 0.5
+    audio = wt.render(dur, pitch, position=pos_env) * 0.5
     amp = adsr(0.005, 0.1, 0.7, 0.1).trigger(gate)
     cutoff = adsr(0.005, 0.15, 0.0, 0.03).trigger(gate) * 4000 + 300
 
@@ -540,7 +540,7 @@ def wt_pluck(hz=440):
     n = int(dur * SAMPLE_RATE)
     # fast exponential decay from 0 (square) to 3 (sine)
     pos = Signal(np.float32(3.0 * (1.0 - np.exp(-np.linspace(0, 8, n)))))
-    return pluck_env.apply(wt.at(hz, position=pos).render(dur))
+    return pluck_env.apply(wt.render(dur, hz, position=pos))
 
 
 def lead_over_bass(bpm=90):
@@ -558,8 +558,8 @@ def lead_over_bass(bpm=90):
     lead_p, lead_g = Sequencer(lead_notes, bpm=bpm).cv()
     bass_p, bass_g = Sequencer(bass_notes, bpm=bpm // 2).cv(repeats=2)
 
-    lead_sig = lead_gen.at(lead_p).render(lead_p.duration) * note_env.trigger(lead_g)
-    bass_sig = bass_gen.at(bass_p).render(bass_p.duration) * bass_env.trigger(bass_g)
+    lead_sig = lead_gen.render(lead_p.duration, lead_p) * note_env.trigger(lead_g)
+    bass_sig = bass_gen.render(bass_p.duration, bass_p) * bass_env.trigger(bass_g)
 
     bass_fx = (Overdrive(gain=2.0) | LowPassFilter(600))(bass_sig)
     lead_fx = DatorroReverb(decay=0.4, wet=0.25)(lead_sig)
@@ -584,7 +584,7 @@ def frozen_bell():
 def smeared_pad(dur=5.0):
     """Saw pad with heavy spectral smear — blurs harmonics into a wash."""
     env = adsr(0.3, 0.2, 0.8, 0.5)
-    sig = env.apply(Oscillator("saw").at(220).render(dur)) * 0.3
+    sig = env.apply(Oscillator("saw").render(dur, 220)) * 0.3
     return SpectralSmear(amount=12.0)(sig)
 
 
@@ -592,7 +592,7 @@ def pitch_shifted_melody():
     """Pentatonic melody harmonised a fifth up via spectral pitch shift."""
     notes = [Note(pentatonic[i], 0.5) for i in [0, 2, 4, 3, 1, 0]]
     pitch, gate = Sequencer(notes, bpm=100).cv(repeats=2)
-    audio = Oscillator("sine").at(pitch).render(pitch.duration)
+    audio = Oscillator("sine").render(pitch.duration, pitch)
     dry = audio * note_env.trigger(gate)
     shifted = PitchShift(semitones=7)(dry)
     return dry * 0.6 + shifted * 0.4
@@ -603,7 +603,7 @@ def robot_voice():
     dur = 2.0
     # Modulator — a buzzy low tone that mimics vocal formants
     mod_env = adsr(0.05, 0.1, 0.7, 0.3)
-    modulator = mod_env.apply(Oscillator("saw").at(120).render(dur))
+    modulator = mod_env.apply(Oscillator("saw").render(dur, 120))
     # Carrier — noise, which the vocoder reshapes
     carrier = WhiteNoise().render(dur)
     return Vocoder(modulator, n_fft=1024, mix=0.9)(carrier) * 0.3
@@ -613,8 +613,8 @@ def spectral_freeze_pad(dur=6.0):
     """Evolving pad frozen mid-morph, then reverbed for ambience."""
     wt = Wavetable.from_waveforms(["sine", "saw", "square"])
     # Render a morphing wavetable, then freeze it mid-sweep
-    pos = Oscillator("triangle").at(0.5).render(2.0) * 1.0 + 1.0
-    source = wt.at(220, position=pos).render(2.0) * 0.4
+    pos = Oscillator("triangle").render(2.0, 0.5) * 1.0 + 1.0
+    source = wt.render(2.0, 220, position=pos) * 0.4
     spec = stft(source, n_fft=2048)
     # Freeze the frame where the morph is between saw and square
     frozen = freeze(spec, frame=spec.n_frames * 3 // 4)
@@ -625,9 +625,9 @@ def spectral_freeze_pad(dur=6.0):
 def spectral_chord():
     """Three frozen tones mixed in the frequency domain."""
     tones = [
-        Oscillator("saw").at(ji_major[0].hz).render(1.0),
-        Oscillator("saw").at(ji_major[2].hz).render(1.0),
-        Oscillator("saw").at(ji_major[4].hz).render(1.0),
+        Oscillator("saw").render(1.0, ji_major[0].hz),
+        Oscillator("saw").render(1.0, ji_major[2].hz),
+        Oscillator("saw").render(1.0, ji_major[4].hz),
     ]
     specs = [stft(t, n_fft=2048) for t in tones]
     frozen = [freeze(s, frame=s.n_frames // 2) for s in specs]
@@ -691,9 +691,9 @@ def cross_synth_textures():
 def spectral_smear_drone(dur=8.0):
     """Extreme spectral smear on a chord — blurs into a shimmering drone."""
     chord = (
-        Oscillator("saw").at(ji_major[0].hz).render(dur) * 0.2
-        + Oscillator("saw").at(ji_major[2].hz).render(dur) * 0.2
-        + Oscillator("saw").at(ji_major[4].hz).render(dur) * 0.2
+        Oscillator("saw").render(dur, ji_major[0].hz) * 0.2
+        + Oscillator("saw").render(dur, ji_major[2].hz) * 0.2
+        + Oscillator("saw").render(dur, ji_major[4].hz) * 0.2
     )
     env = adsr(0.5, 0.3, 0.8, 0.7)
     sig = env.apply(chord)
@@ -708,9 +708,9 @@ def vocoder_arp(bpm=120):
     # Carrier: arpeggiated sine
     notes = [Note(ji_major[i], 0.25) for i in [0, 2, 4, 7]]
     pitch, gate = Arpeggiator(notes, pattern="up", note_duration=0.125, bpm=bpm).cv(bars=4)
-    carrier = Oscillator("sine").at(pitch).render(pitch.duration) * note_env.trigger(gate)
+    carrier = Oscillator("sine").render(pitch.duration, pitch) * note_env.trigger(gate)
     # Modulator: slow saw sweep — gives rhythmic vowel-like filtering
-    mod = Oscillator("saw").at(80).render(pitch.duration) * 0.5
+    mod = Oscillator("saw").render(pitch.duration, 80) * 0.5
     mod_env = adsr(0.01, 0.3, 0.6, 0.4)
     modulator = mod_env.apply(mod)
     return Vocoder(modulator, n_fft=1024, mix=0.8)(carrier) * 0.4
@@ -731,7 +731,7 @@ def tr808_kick(decay=0.7):
     t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
     # exponential pitch sweep: starts at ~160 Hz, decays to ~45 Hz
     pitch_sig = Signal(np.float32(45.0 + 115.0 * np.exp(-t * 35.0)))
-    body = Oscillator("sine").at(pitch_sig).render(dur)
+    body = Oscillator("sine").render(dur, pitch_sig)
     # amplitude envelope: fast attack, long exponential decay
     amp = Envelope([
         Segment(0.004, 0.0, 1.0, curve=-4),
@@ -739,7 +739,7 @@ def tr808_kick(decay=0.7):
     ])
     # click transient from a high-pitched burst
     click_env = Envelope([Segment(0.003, 1.0, 0.0, curve=-6)])
-    click = click_env.apply(Oscillator("sine").at(160).render(dur)) * 0.6
+    click = click_env.apply(Oscillator("sine").render(dur, 160)) * 0.6
     return amp.apply(body) + click
 
 
@@ -757,8 +757,8 @@ def tr808_snare():
         Segment(dur - 0.001, 1.0, 0.0, curve=3),
     ])
     body = body_env.apply(
-        Oscillator("sine").at(pitch1).render(dur) * 0.5
-        + Oscillator("sine").at(pitch2).render(dur) * 0.3
+        Oscillator("sine").render(dur, pitch1) * 0.5
+        + Oscillator("sine").render(dur, pitch2) * 0.3
     )
     # noise rattle
     noise_env = Envelope([
@@ -812,7 +812,7 @@ def tr808_hihat(open=False):
     # the original 808 uses six metal-square oscillators at these frequencies
     freqs = [204.5, 298.5, 366.5, 522.7, 540.5, 800.6]
     metal = sum(
-        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        Oscillator("square").render(dur + 0.01, f) * (1.0 / len(freqs))
         for f in freqs
     )
     filtered = (HighPassFilter(7000) | BandPassFilter(7500, 12000))(metal)
@@ -833,8 +833,8 @@ def tr808_cowbell():
     """808 cowbell: two square oscillators at 540 Hz and 800 Hz."""
     dur = 0.12
     sig = (
-        Oscillator("square").at(540).render(dur) * 0.5
-        + Oscillator("square").at(800).render(dur) * 0.5
+        Oscillator("square").render(dur, 540) * 0.5
+        + Oscillator("square").render(dur, 800) * 0.5
     )
     filtered = BandPassFilter(500, 3000)(sig)
     env = Envelope([
@@ -856,7 +856,7 @@ def tr808_tom(pitch=100, decay=0.3):
         Segment(0.002, 0.0, 1.0, curve=-4),
         Segment(decay, 1.0, 0.0, curve=3),
     ])
-    return env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    return env.apply(Oscillator("sine").render(dur, pitch_sig))
 
 
 def tr808_rimshot():
@@ -866,7 +866,7 @@ def tr808_rimshot():
         Segment(0.001, 0.0, 1.0, curve=-6),
         Segment(dur - 0.001, 1.0, 0.0, curve=-3),
     ])
-    tone = tone_env.apply(Oscillator("triangle").at(500).render(dur))
+    tone = tone_env.apply(Oscillator("triangle").render(dur, 500))
     noise = tone_env.apply(
         HighPassFilter(2000)(WhiteNoise().render(dur))
     )
@@ -924,7 +924,7 @@ def tr909_kick():
     t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
     # faster sweep, starts higher for more punch
     pitch_sig = Signal(np.float32(50.0 + 200.0 * np.exp(-t * 55.0)))
-    body = Oscillator("sine").at(pitch_sig).render(dur)
+    body = Oscillator("sine").render(dur, pitch_sig)
     amp = Envelope([
         Segment(0.002, 0.0, 1.0, curve=-6),
         Segment(0.30, 1.0, 0.0, curve=3),
@@ -946,7 +946,7 @@ def tr909_snare():
         Segment(0.001, 0.0, 1.0, curve=-6),
         Segment(dur - 0.001, 1.0, 0.0, curve=2),
     ])
-    body = body_env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    body = body_env.apply(Oscillator("sine").render(dur, pitch_sig))
     # the 909 noise is brighter and more prominent
     noise_env = Envelope([
         Segment(0.001, 0.0, 1.0, curve=-4),
@@ -965,7 +965,7 @@ def tr909_hihat(open=False):
     # 909 uses similar metallic oscillator approach but different tuning
     freqs = [205.3, 304.4, 369.6, 522.7, 540.5, 811.2]
     metal = sum(
-        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        Oscillator("square").render(dur + 0.01, f) * (1.0 / len(freqs))
         for f in freqs
     )
     # 909 hats are brighter — higher filter cutoff
@@ -1020,7 +1020,7 @@ def tr909_ride(dur=0.6):
     """909 ride cymbal: metallic oscillators with longer decay."""
     freqs = [205.3, 304.4, 369.6, 522.7, 540.5, 811.2, 1043.0]
     metal = sum(
-        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        Oscillator("square").render(dur + 0.01, f) * (1.0 / len(freqs))
         for f in freqs
     )
     filtered = (HighPassFilter(5000) | BandPassFilter(6000, 11000))(metal)
@@ -1091,13 +1091,13 @@ def tr808_kick_v2(decay=0.7):
     # Segment(dur, start=1, end=0, curve=5) gives a fast-decaying convex curve.
     # Scale it: * 115 + 45 → sweeps from 160 Hz down to 45 Hz.
     pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-20)]).render(dur) * 115.0 + 45.0
-    body = Oscillator("sine").at(pitch_sig).render(dur)
+    body = Oscillator("sine").render(dur, pitch_sig)
     amp = Envelope([
         Segment(0.004, 0.0, 1.0, curve=-4),
         Segment(decay, 1.0, 0.0, curve=4),
     ])
     click_env = Envelope([Segment(0.003, 1.0, 0.0, curve=-6)])
-    click = click_env.apply(Oscillator("sine").at(160).render(dur)) * 0.6
+    click = click_env.apply(Oscillator("sine").render(dur, 160)) * 0.6
     return amp.apply(body) + click
 
 
@@ -1111,8 +1111,8 @@ def tr808_snare_v2():
         Segment(dur - 0.001, 1.0, 0.0, curve=3),
     ])
     body = body_env.apply(
-        Oscillator("sine").at(pitch1).render(dur) * 0.5
-        + Oscillator("sine").at(pitch2).render(dur) * 0.3
+        Oscillator("sine").render(dur, pitch1) * 0.5
+        + Oscillator("sine").render(dur, pitch2) * 0.3
     )
     noise_env = Envelope([
         Segment(0.001, 0.0, 1.0, curve=-4),
@@ -1178,14 +1178,14 @@ def tr808_tom_v2(pitch=100, decay=0.3):
         Segment(0.002, 0.0, 1.0, curve=-4),
         Segment(decay, 1.0, 0.0, curve=3),
     ])
-    return env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    return env.apply(Oscillator("sine").render(dur, pitch_sig))
 
 
 def tr909_kick_v2():
     """v2: pitch sweep via Envelope instead of np.exp."""
     dur = 0.35
     pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-15)]).render(dur) * 200.0 + 50.0
-    body = Oscillator("sine").at(pitch_sig).render(dur)
+    body = Oscillator("sine").render(dur, pitch_sig)
     amp = Envelope([
         Segment(0.002, 0.0, 1.0, curve=-6),
         Segment(0.30, 1.0, 0.0, curve=3),
@@ -1203,7 +1203,7 @@ def tr909_snare_v2():
         Segment(0.001, 0.0, 1.0, curve=-6),
         Segment(dur - 0.001, 1.0, 0.0, curve=2),
     ])
-    body = body_env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    body = body_env.apply(Oscillator("sine").render(dur, pitch_sig))
     noise_env = Envelope([
         Segment(0.001, 0.0, 1.0, curve=-4),
         Segment(dur * 0.7, 1.0, 0.15, curve=2),
@@ -1461,11 +1461,11 @@ def polymetric_3_4(bpm=90):
     bass_p, bass_g = signals["bass"]
     dur = melody_p.duration
 
-    melody_audio = Oscillator("triangle").at(melody_p).render(dur)
+    melody_audio = Oscillator("triangle").render(dur, melody_p)
     melody_audio = melody_audio * adsr(0.01, 0.1, 0.7, 0.1).trigger(melody_g) * 0.4
 
     bass_gen = Oscillator("saw") + Oscillator("saw", ratio=2) * 0.3
-    bass_audio = bass_gen.at(bass_p * 0.5).render(dur)
+    bass_audio = bass_gen.render(dur, bass_p * 0.5)
     bass_audio = bass_audio * adsr(0.01, 0.15, 0.6, 0.15).trigger(bass_g) * 0.5
     bass_audio = LowPassFilter(800)(bass_audio)
 
@@ -1492,8 +1492,8 @@ def polymetric_phasing(bpm=120):
     env = adsr(0.01, 0.02, 0.6, 0.01)
     pitch_a, gate_a = signals["voice_a"]
     pitch_b, gate_b = signals["voice_b"]
-    audio_a = osc.at(pitch_a).render(pitch_a.duration) * env.trigger(gate_a)
-    audio_b = osc.at(pitch_b).render(pitch_b.duration) * env.trigger(gate_b)
+    audio_a = osc.render(pitch_a.duration, pitch_a) * env.trigger(gate_a)
+    audio_b = osc.render(pitch_b.duration, pitch_b) * env.trigger(gate_b)
     audio_a = pan(audio_a, -0.3)
     audio_b = pan(audio_b, 0.3)
     audio = audio_a * 0.35 + audio_b * 0.35
@@ -1518,11 +1518,11 @@ def polymetric_notation(bpm=100):
     low_p, low_g = signals["low"]
     dur = high_p.duration
 
-    high_audio = Oscillator("sine").at(high_p).render(dur)
+    high_audio = Oscillator("sine").render(dur, high_p)
     high_audio = high_audio * adsr(0.005, 0.1, 0.5, 0.08).trigger(high_g) * 0.35
 
     low_gen = Oscillator("triangle") + Oscillator("triangle", ratio=2) * 0.2
-    low_audio = low_gen.at(low_p * 0.5).render(dur)
+    low_audio = low_gen.render(dur, low_p * 0.5)
     low_audio = low_audio * adsr(0.01, 0.15, 0.7, 0.12).trigger(low_g) * 0.45
 
     mx = Mixer()
@@ -1538,17 +1538,17 @@ def polymetric_notation(bpm=100):
 
 def sample_octaves():
     """Pitch-shift a saw sample across three octaves."""
-    sig = Oscillator("saw").at(110).render(2.0)
+    sig = Oscillator("saw").render(2.0, 110)
     s = Sample.from_signal(sig, root_pitch=110)
-    low = s.at(55).render(2.0)
-    mid = s.at(110).render(2.0)
-    high = s.at(220).render(2.0)
+    low = s.render(2.0, 55)
+    mid = s.render(2.0, 110)
+    high = s.render(2.0, 220)
     return Signal.concat(low, mid, high) * 0.5
 
 
 def sample_melody():
     """Drive a sample with Sequencer pitch CV — same workflow as oscillators."""
-    sig = (Oscillator("saw") + Oscillator("saw", ratio=2.001) * 0.3).at(220).render(1.0)
+    sig = (Oscillator("saw") + Oscillator("saw", ratio=2.001) * 0.3).render(1.0, 220)
     s = Sample.from_signal(sig, root_pitch=220)
 
     notes = [
@@ -1558,7 +1558,7 @@ def sample_melody():
     pitch, gate = Sequencer(notes, bpm=120).cv()
     dur = pitch.duration
 
-    audio = s.at(pitch).render(dur)
+    audio = s.render(dur, pitch)
     env = adsr(0.01, 0.1, 0.7, 0.15).trigger(gate)
     cutoff = adsr(0.005, 0.15, 0.0, 0.05).trigger(gate) * 3000 + 400
     return LowPassFilter(cutoff)(audio) * env
@@ -1566,11 +1566,11 @@ def sample_melody():
 
 def sample_sliced():
     """Slice a sample and play back different regions."""
-    sig = Oscillator("saw").at(110).render(2.0)
+    sig = Oscillator("saw").render(2.0, 110)
     sig = (LowPassFilter(800) | DatorroReverb(decay=0.4, wet=0.6))(sig)
     s = Sample.from_signal(sig)
-    head = s[:0.5].normalize().at().render(0.5)
-    tail = s[1.0:2.0].normalize().at().render(1.0)
+    head = s[:0.5].normalize().render(0.5)
+    tail = s[1.0:2.0].normalize().render(1.0)
     return Signal.concat(head, Signal.silence(0.2), tail)
 
 
@@ -1580,13 +1580,13 @@ def sample_loop():
     dur = 0.5
     n = int(dur * sr)
     # Attack portion (first 0.1s) + looped sustain (0.1s–0.3s)
-    sig = Oscillator("triangle").at(330).render(dur)
+    sig = Oscillator("triangle").render(dur, 330)
     env_data = adsr(0.01, 0.05, 0.8, 0.1).render(dur).data
     sig = sig * Signal(env_data, sr)
     s = Sample(sig.data, sr, root_pitch=330,
               loop_start=int(0.1 * sr), loop_end=int(0.3 * sr))
     # Render longer than the original — loop region sustains
-    return s.at(330).render(2.0) * 0.6
+    return s.render(2.0, 330) * 0.6
 
 
 # ---------------------------------------------------------------------------
@@ -1596,17 +1596,17 @@ def sample_loop():
 
 def granular_cloud(dur=6.0):
     """Granular cloud from a short saw burst — ambient texture."""
-    sig = Oscillator("saw").at(110).render(0.5)
+    sig = Oscillator("saw").render(0.5, 110)
     sig = LowPassFilter(1200)(sig)
     s = Sample.from_signal(sig)
     grain = Granular(s, position=0.3, grain_size=0.06, density=25, seed=7)
-    return DatorroReverb(decay=0.8, wet=0.7)(grain.at().render(dur)) * 0.5
+    return DatorroReverb(decay=0.8, wet=0.7)(grain.render(dur)) * 0.5
 
 
 def granular_scan(dur=6.0):
     """Slowly scan through a sample with granular playback."""
     import numpy as np
-    sig = (Oscillator("saw") + Oscillator("square", ratio=0.5) * 0.3).at(110).render(2.0)
+    sig = (Oscillator("saw") + Oscillator("square", ratio=0.5) * 0.3).render(2.0, 110)
     sig = LowPassFilter(2000)(sig)
     s = Sample.from_signal(sig)
     # Triangle LFO scans position 0 -> 1 -> 0
@@ -1615,12 +1615,12 @@ def granular_scan(dur=6.0):
     tri = np.where(ramp < 1.0, ramp, 2.0 - ramp)
     pos = Signal(tri, SAMPLE_RATE)
     grain = Granular(s, position=pos, grain_size=0.08, density=30, spread=0.02, seed=3)
-    return DatorroReverb(decay=0.7, wet=0.5)(grain.at().render(dur)) * 0.5
+    return DatorroReverb(decay=0.7, wet=0.5)(grain.render(dur)) * 0.5
 
 
 def granular_pitched(bpm=100):
     """Granular engine driven by Sequencer pitch CV — melodic grains."""
-    sig = Oscillator("saw").at(220).render(1.0)
+    sig = Oscillator("saw").render(1.0, 220)
     sig = LowPassFilter(3000)(sig)
     s = Sample.from_signal(sig, root_pitch=220)
 
@@ -1633,7 +1633,7 @@ def granular_pitched(bpm=100):
     dur = pitch.duration
 
     grain = Granular(s, position=0.4, grain_size=0.05, density=30, spread=0.01, seed=5)
-    audio = grain.at(pitch).render(dur)
+    audio = grain.render(dur, pitch)
     env = adsr(0.02, 0.15, 0.7, 0.2).trigger(gate)
     return DatorroReverb(decay=0.5, wet=0.3)(audio * env) * 0.5
 
@@ -1641,23 +1641,23 @@ def granular_pitched(bpm=100):
 def granular_density_ramp(dur=5.0):
     """Grain density ramps from sparse clicks to a dense cloud."""
     import numpy as np
-    sig = Oscillator("triangle").at(330).render(0.3)
+    sig = Oscillator("triangle").render(0.3, 330)
     s = Sample.from_signal(sig)
     n = int(dur * SAMPLE_RATE)
     dens = Signal(np.linspace(2, 60, n, dtype=np.float32), SAMPLE_RATE)
     grain = Granular(s, position=0.2, grain_size=0.04, density=dens, seed=11)
-    return grain.at().render(dur) * 0.5
+    return grain.render(dur) * 0.5
 
 
 def granular_shimmer(dur=8.0):
     """Shimmering granular pad — pitch-doubled grains with reverb."""
-    sig = Oscillator("saw").at(220).render(1.0)
+    sig = Oscillator("saw").render(1.0, 220)
     sig = LowPassFilter(1500)(sig)
     s = Sample.from_signal(sig, root_pitch=220)
     # Grains at 2x pitch = octave up shimmer
     grain = Granular(s, position=0.5, grain_size=0.07, density=35,
                      pitch=2.0, spread=0.05, seed=42)
-    dry = grain.at().render(dur)
+    dry = grain.render(dur)
     return DatorroReverb(decay=0.9, wet=0.8)(dry) * 0.3
 
 
@@ -1690,4 +1690,4 @@ def wt_from_sample():
     dur = 4.0
     n = int(dur * SAMPLE_RATE)
     pos = Signal(np.linspace(0, n_cycles - 1, n, dtype=np.float32), SAMPLE_RATE)
-    return wt.at(220, position=pos).render(dur) * 0.5
+    return wt.render(dur, 220, position=pos) * 0.5

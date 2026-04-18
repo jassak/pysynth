@@ -21,7 +21,7 @@ def pluck(
     env = adsr(attack, decay, sustain, release)
 
     def synth(hz, gate, _osc=osc, _env=env):
-        return _osc.at(hz).render(gate.duration) * 0.5 * _env.trigger(gate)
+        return _osc.render(gate.duration, hz) * 0.5 * _env.trigger(gate)
 
     return Patch(synth=synth, name="pluck")
 

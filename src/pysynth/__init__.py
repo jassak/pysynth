@@ -1,4 +1,4 @@
-from pysynth._core import SAMPLE_RATE, Signal, Effect, Generator
+from pysynth._core import SAMPLE_RATE, Signal, Effect
 from pysynth.generators import Oscillator, WhiteNoise, PinkNoise, Wavetable, Sample, Granular
 from pysynth.envelopes import Segment, Envelope, adsr
 from pysynth.effects import (

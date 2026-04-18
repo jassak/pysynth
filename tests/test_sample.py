@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from scipy.io import wavfile
 
-from pysynth._core import Signal, Generator
+from pysynth._core import Signal
 from pysynth.generators.sample import Sample
 
 SR = 4000
@@ -210,31 +210,31 @@ class TestAsSignal:
 
 
 # ------------------------------------------------------------------ #
-# .at() rendering                                                     #
+# Rendering                                                           #
 # ------------------------------------------------------------------ #
 
 
-class TestAt:
-    def test_returns_generator(self):
+class TestRender:
+    def test_render_returns_signal(self):
         s = Sample(_sine_data(100, 1.0), SR, root_pitch=100.0)
-        gen = s.at()
-        assert isinstance(gen, Generator)
+        sig = s.render(0.5, sr=SR)
+        assert isinstance(sig, Signal)
 
     def test_original_rate_playback(self):
         data = _sine_data(100, 0.5)
         s = Sample(data, SR)
-        sig = s.at().render(0.5, SR)
+        sig = s.render(0.5, sr=SR)
         assert sig.sample_rate == SR
         np.testing.assert_allclose(sig.data, data, atol=1e-5)
 
     def test_original_rate_trim(self):
         s = Sample(_sine_data(100, 1.0), SR)
-        sig = s.at().render(0.5, SR)
+        sig = s.render(0.5, sr=SR)
         assert len(sig.data) == int(0.5 * SR)
 
     def test_original_rate_pad(self):
         s = Sample(_sine_data(100, 0.5), SR)
-        sig = s.at().render(1.0, SR)
+        sig = s.render(1.0, sr=SR)
         assert len(sig.data) == SR
         # Tail should be zero (zero-padded beyond sample)
         assert np.allclose(sig.data[int(0.5 * SR) + 10:], 0.0, atol=1e-5)
@@ -242,9 +242,9 @@ class TestAt:
     def test_pitch_shift_octave_up(self):
         """Shifting up an octave should double the frequency."""
         s = Sample(_sine_data(100, 1.0), SR, root_pitch=100.0)
-        sig = s.at(200.0).render(0.5, SR)
+        sig = s.render(0.5, 200.0, SR)
         # Count zero crossings — should be ~2x more than original rate
-        sig_orig = s.at(100.0).render(0.5, SR)
+        sig_orig = s.render(0.5, 100.0, SR)
         zc_orig = int(np.sum(np.diff(np.sign(sig_orig.data)) != 0))
         zc_shifted = int(np.sum(np.diff(np.sign(sig.data)) != 0))
         assert zc_shifted == pytest.approx(zc_orig * 2, abs=4)
@@ -252,8 +252,8 @@ class TestAt:
     def test_pitch_shift_octave_down(self):
         """Shifting down an octave should halve the frequency."""
         s = Sample(_sine_data(200, 1.0), SR, root_pitch=200.0)
-        sig = s.at(100.0).render(0.5, SR)
-        sig_orig = s.at(200.0).render(0.5, SR)
+        sig = s.render(0.5, 100.0, SR)
+        sig_orig = s.render(0.5, 200.0, SR)
         zc_orig = int(np.sum(np.diff(np.sign(sig_orig.data)) != 0))
         zc_shifted = int(np.sum(np.diff(np.sign(sig.data)) != 0))
         assert zc_shifted == pytest.approx(zc_orig // 2, abs=4)
@@ -268,18 +268,18 @@ class TestAt:
             np.full(n - n // 2, 200.0),
         ])
         hz_sig = _sig(hz_data)
-        sig = s.at(hz_sig).render(0.5, SR)
+        sig = s.render(0.5, hz_sig, SR)
         assert len(sig.data) == n
 
-    def test_at_hz_requires_root_pitch(self):
+    def test_render_hz_requires_root_pitch(self):
         s = Sample(np.zeros(100), SR)
         with pytest.raises(ValueError, match="root_pitch"):
-            s.at(440.0)
+            s.render(0.5, 440.0, SR)
 
-    def test_at_none_no_root_pitch_ok(self):
+    def test_render_no_hz_no_root_pitch_ok(self):
         s = Sample(np.zeros(100), SR)
-        gen = s.at()
-        assert isinstance(gen, Generator)
+        sig = s.render(0.5, sr=SR)
+        assert isinstance(sig, Signal)
 
     def test_loop_points(self):
         """Loop points should cause the sample to repeat the loop region."""
@@ -291,7 +291,7 @@ class TestAt:
         data[loop_s:loop_e] = 1.0
         s = Sample(data, SR, root_pitch=100.0, loop_start=loop_s, loop_end=loop_e)
         # Render longer than the sample — should loop the 1.0 region
-        sig = s.at(100.0).render(1.0, SR)
+        sig = s.render(1.0, 100.0, SR)
         # After the loop region starts, all values should be ~1.0
         # (the loop region is all 1.0)
         tail = sig.data[loop_s + 50:]
@@ -303,7 +303,7 @@ class TestAt:
         right = _sine_data(200, 0.5)
         stereo = np.column_stack([left, right])
         s = Sample(stereo, SR, root_pitch=100.0)
-        sig = s.at(100.0).render(0.5, SR)
+        sig = s.render(0.5, 100.0, SR)
         assert sig.n_channels == 2
 
 

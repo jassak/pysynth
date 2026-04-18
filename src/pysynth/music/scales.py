@@ -386,7 +386,7 @@ class Scale:
 
         notes = [Note(self[i], 0.5) for i in range(len(self))]
         pitch, gate = Sequencer(notes, bpm=bpm, retrigger_gap=0.01).cv()
-        audio = Oscillator("sine").at(pitch).render(pitch.duration)
+        audio = Oscillator("sine").render(pitch.duration, pitch)
         env = adsr(0.01, 0.02, 0.6, 0.01).trigger(gate)
         (audio * env * 0.5).play(blocking=blocking)
 

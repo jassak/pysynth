@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from scipy.io import wavfile
 
-from pysynth._core import SAMPLE_RATE, Signal, Generator, _as_array
+from pysynth._core import SAMPLE_RATE, Signal, _as_array
 
 
 @dataclass
@@ -15,8 +15,8 @@ class Sample:
     of :class:`Oscillator` and :class:`Wavetable`.
 
     Holds raw audio data together with optional metadata (root pitch, loop
-    points) and exposes the standard ``.at(hz)`` interface for pitched
-    playback through the CV/gate signal flow.
+    points) and exposes pitched playback via ``.render(dur, hz)``
+    through the CV/gate signal flow.
 
     Parameters
     ----------
@@ -27,7 +27,7 @@ class Sample:
         Sample rate of the audio data.
     root_pitch:
         The pitch (in Hz) at which the sample was originally recorded.
-        Required for pitched playback via ``.at(hz)``.
+        Required for pitched playback via ``.render(dur, hz)``.
     loop_start:
         Start of the sustain loop region, in sample indices.
     loop_end:
@@ -141,19 +141,23 @@ class Sample:
                       loop_start=self.loop_start, loop_end=self.loop_end)
 
     # ------------------------------------------------------------------ #
-    # Rendering — the .at() pattern                                        #
+    # Rendering                                                            #
     # ------------------------------------------------------------------ #
 
-    def at(self, hz: float | Signal | None = None) -> Generator:
-        """Bind a playback pitch, returning a :class:`Generator`.
+    def render(self, dur: float, hz: float | Signal | None = None, sr: int = SAMPLE_RATE) -> Signal:
+        """Render the sample.
 
         Parameters
         ----------
+        dur:
+            Duration in seconds.
         hz:
             Target frequency.  When ``None``, the sample plays back at its
             original rate.  When a float or Signal, the sample is resampled
             to transpose from ``root_pitch`` to ``hz`` (requires
             ``root_pitch`` to be set).
+        sr:
+            Sample rate.
         """
         sample_data = self.data.astype(np.float64)
         sr_orig = self.sample_rate
@@ -164,54 +168,47 @@ class Sample:
 
         if hz is not None and root is None:
             raise ValueError(
-                "root_pitch must be set to use .at(hz) with a frequency. "
-                "Use .at() for original-rate playback, or set root_pitch."
+                "root_pitch must be set to use render with a frequency. "
+                "Use .render(dur) for original-rate playback, or set root_pitch."
             )
 
-        def render(dur: float, sr: int = SAMPLE_RATE) -> Signal:
-            n_out = int(dur * sr)
+        n_out = int(dur * sr)
 
-            if hz is None:
-                # Original-rate playback — resample if sample rates differ,
-                # otherwise just copy/trim/pad.
-                rate = sr_orig / sr
-                indices = np.arange(n_out, dtype=np.float64) * rate
-            elif isinstance(hz, Signal):
-                hz_arr = _as_array(hz, n_out)
-                ratio_arr = hz_arr / root
-                # Phase accumulation: each sample advances by ratio * (sr_orig/sr)
-                indices = np.cumsum(ratio_arr) * (sr_orig / sr)
-            else:
-                ratio = float(hz) / root
-                indices = np.arange(n_out, dtype=np.float64) * ratio * (sr_orig / sr)
+        if hz is None:
+            # Original-rate playback — resample if sample rates differ,
+            # otherwise just copy/trim/pad.
+            rate = sr_orig / sr
+            indices = np.arange(n_out, dtype=np.float64) * rate
+        elif isinstance(hz, Signal):
+            hz_arr = _as_array(hz, n_out)
+            ratio_arr = hz_arr / root
+            # Phase accumulation: each sample advances by ratio * (sr_orig/sr)
+            indices = np.cumsum(ratio_arr) * (sr_orig / sr)
+        else:
+            ratio = float(hz) / root
+            indices = np.arange(n_out, dtype=np.float64) * ratio * (sr_orig / sr)
 
-            # Loop-point wrapping or clamping
-            if loop_s is not None and loop_e is not None and loop_e > loop_s:
-                loop_len = loop_e - loop_s
-                mask = indices >= loop_e
-                if np.any(mask):
-                    indices[mask] = loop_s + (indices[mask] - loop_s) % loop_len
-            else:
-                # Zero-pad beyond sample end
-                pass
+        # Loop-point wrapping or clamping
+        if loop_s is not None and loop_e is not None and loop_e > loop_s:
+            loop_len = loop_e - loop_s
+            mask = indices >= loop_e
+            if np.any(mask):
+                indices[mask] = loop_s + (indices[mask] - loop_s) % loop_len
 
-            if sample_data.ndim == 1:
-                src_x = np.arange(n_src, dtype=np.float64)
-                out = np.interp(indices, src_x, sample_data, left=0.0, right=0.0)
-                return Signal(out.astype(np.float32), sr)
-            else:
-                # Stereo: resample each channel independently
-                src_x = np.arange(n_src, dtype=np.float64)
-                channels = []
-                for ch in range(sample_data.shape[1]):
-                    ch_data = np.interp(indices, src_x, sample_data[:, ch],
-                                        left=0.0, right=0.0)
-                    channels.append(ch_data)
-                out = np.column_stack(channels)
-                return Signal(out.astype(np.float32), sr)
-
-        name = f"Sample.at({hz})" if hz is not None else "Sample.at()"
-        return Generator(render, name=name)
+        if sample_data.ndim == 1:
+            src_x = np.arange(n_src, dtype=np.float64)
+            out = np.interp(indices, src_x, sample_data, left=0.0, right=0.0)
+            return Signal(out.astype(np.float32), sr)
+        else:
+            # Stereo: resample each channel independently
+            src_x = np.arange(n_src, dtype=np.float64)
+            channels = []
+            for ch in range(sample_data.shape[1]):
+                ch_data = np.interp(indices, src_x, sample_data[:, ch],
+                                    left=0.0, right=0.0)
+                channels.append(ch_data)
+            out = np.column_stack(channels)
+            return Signal(out.astype(np.float32), sr)
 
     # ------------------------------------------------------------------ #
     # Display                                                              #

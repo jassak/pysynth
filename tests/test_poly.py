@@ -13,46 +13,46 @@ def _samples(beats: float, bpm: float = 120.0) -> int:
     return int(beats * 60.0 / bpm * SR)
 
 
-class TestVoiceAllocation:
-    def test_three_simultaneous_notes_use_three_voices(self):
+class TestPartAllocation:
+    def test_three_simultaneous_notes_use_three_parts(self):
         events = [
             (0.0, Note(Pitch(440), 2.0)),
             (0.0, Note(Pitch(550), 2.0)),
             (0.0, Note(Pitch(660), 2.0)),
         ]
-        ps = PolySequencer(events, n_voices=4, bpm=120)
+        ps = PolySequencer(events, n_parts=4, bpm=120)
         allocated = ps._allocate()
 
-        # Three voices should have exactly one event each, fourth empty
+        # Three parts should have exactly one event each, fourth empty
         used = [v for v in allocated if v]
         assert len(used) == 3
         assert len(allocated[3]) == 0
 
-    def test_sequential_notes_reuse_voice(self):
+    def test_sequential_notes_reuse_part(self):
         events = [
             (0.0, Note(Pitch(440), 1.0)),
             (1.0, Note(Pitch(550), 1.0)),
             (2.0, Note(Pitch(660), 1.0)),
         ]
-        ps = PolySequencer(events, n_voices=4, bpm=120)
+        ps = PolySequencer(events, n_parts=4, bpm=120)
         allocated = ps._allocate()
 
-        # All notes fit in a single voice
+        # All notes fit in a single part
         used = [v for v in allocated if v]
         assert len(used) == 1
         assert len(allocated[0]) == 3
 
-    def test_voice_stealing_when_full(self):
-        # 3 notes overlap, but only 2 voices available
+    def test_part_stealing_when_full(self):
+        # 3 notes overlap, but only 2 parts available
         events = [
             (0.0, Note(Pitch(440), 4.0)),  # ends at beat 4
             (0.0, Note(Pitch(550), 2.0)),  # ends at beat 2
-            (1.0, Note(Pitch(660), 1.0)),  # starts at beat 1, no free voice
+            (1.0, Note(Pitch(660), 1.0)),  # starts at beat 1, no free part
         ]
-        ps = PolySequencer(events, n_voices=2, bpm=120)
+        ps = PolySequencer(events, n_parts=2, bpm=120)
         allocated = ps._allocate()
 
-        # All events should be allocated (third steals from voice ending soonest)
+        # All events should be allocated (third steals from part ending soonest)
         total_events = sum(len(v) for v in allocated)
         assert total_events == 3
 
@@ -63,28 +63,28 @@ class TestCvOutput:
             (0.0, Note(Pitch(440), 1.0)),
             (0.0, Note(Pitch(550), 1.0)),
         ]
-        voices = PolySequencer(events, n_voices=2, bpm=120).cv(sample_rate=SR)
+        parts = PolySequencer(events, n_parts=2, bpm=120).cv(sample_rate=SR)
 
-        assert len(voices) == 2
+        assert len(parts) == 2
 
         # Check pitch values at the midpoint of the note
         mid = _samples(0.5)
-        pitches = sorted(voices[i][0].data[mid] for i in range(2))
+        pitches = sorted(parts[i][0].data[mid] for i in range(2))
         assert abs(pitches[0] - 440.0) < 0.01
         assert abs(pitches[1] - 550.0) < 0.01
 
         # Gate should be 1.0 during the note
         for i in range(2):
-            assert voices[i][1].data[mid] == 1.0
+            assert parts[i][1].data[mid] == 1.0
 
-    def test_all_voices_same_duration(self):
+    def test_all_parts_same_duration(self):
         events = [
             (0.0, Note(Pitch(440), 1.0)),
             (0.0, Note(Pitch(550), 3.0)),  # longer note
         ]
-        voices = PolySequencer(events, n_voices=4, bpm=120).cv(sample_rate=SR)
+        parts = PolySequencer(events, n_parts=4, bpm=120).cv(sample_rate=SR)
 
-        durations = [p.duration for p, g in voices]
+        durations = [p.duration for p, g in parts]
         assert all(d == durations[0] for d in durations)
 
         # Duration should match the longest event
@@ -96,8 +96,8 @@ class TestCvOutput:
             (0.0, Note(Pitch(440), 1.0)),  # beats 0-1
             (2.0, Note(Pitch(440), 1.0)),  # beats 2-3 (gap at beat 1-2)
         ]
-        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
-        pitch, gate = voices[0]
+        parts = PolySequencer(events, n_parts=1, bpm=120).cv(sample_rate=SR)
+        pitch, gate = parts[0]
 
         # In the gap (beat 1.5), gate should be 0 but pitch holds
         # (sample-and-hold) so the oscillator keeps producing audio
@@ -110,37 +110,37 @@ class TestCvOutput:
         events = [
             (0.0, Note(Pitch(440), 1.0, velocity=0.7)),
         ]
-        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
-        _, gate = voices[0]
+        parts = PolySequencer(events, n_parts=1, bpm=120).cv(sample_rate=SR)
+        _, gate = parts[0]
 
         mid = _samples(0.5)
         assert abs(gate.data[mid] - 0.7) < 0.001
 
     def test_single_note_monophonic(self):
         events = [(0.0, Note(Pitch(440), 2.0))]
-        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
+        parts = PolySequencer(events, n_parts=1, bpm=120).cv(sample_rate=SR)
 
-        assert len(voices) == 1
-        pitch, gate = voices[0]
+        assert len(parts) == 1
+        pitch, gate = parts[0]
         mid = _samples(1.0)
         assert abs(pitch.data[mid] - 440.0) < 0.01
         assert gate.data[mid] == 1.0
 
     def test_empty_events(self):
-        voices = PolySequencer([], n_voices=2, bpm=120).cv(sample_rate=SR)
-        assert len(voices) == 2
-        for p, g in voices:
+        parts = PolySequencer([], n_parts=2, bpm=120).cv(sample_rate=SR)
+        assert len(parts) == 2
+        for p, g in parts:
             assert len(p.data) == 0
 
 
 class TestRetriggerGap:
-    def test_sequential_notes_on_same_voice_have_gap(self):
+    def test_sequential_notes_on_same_part_have_gap(self):
         events = [
             (0.0, Note(Pitch(440), 1.0)),
             (1.0, Note(Pitch(550), 1.0)),
         ]
-        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
-        pitch, gate = voices[0]
+        parts = PolySequencer(events, n_parts=1, bpm=120).cv(sample_rate=SR)
+        pitch, gate = parts[0]
         boundary = _samples(1.0)
         # Gate should be zero at the start of the second note
         assert gate.data[boundary] == 0.0
@@ -153,8 +153,8 @@ class TestRetriggerGap:
             (0.0, Note(Pitch(440), 1.0)),  # ends at beat 1
             (2.0, Note(Pitch(550), 1.0)),  # starts at beat 2 (gap between)
         ]
-        voices = PolySequencer(events, n_voices=1, bpm=120).cv(sample_rate=SR)
-        _, gate = voices[0]
+        parts = PolySequencer(events, n_parts=1, bpm=120).cv(sample_rate=SR)
+        _, gate = parts[0]
         note2_start = _samples(2.0)
         # No retrigger gap needed — there's already silence between the notes
         assert gate.data[note2_start] > 0.0
@@ -164,8 +164,8 @@ class TestRetriggerGap:
             (0.0, Note(Pitch(440), 1.0)),
             (1.0, Note(Pitch(550), 1.0)),
         ]
-        voices = PolySequencer(events, n_voices=1, bpm=120, retrigger_gap=0).cv(sample_rate=SR)
-        _, gate = voices[0]
+        parts = PolySequencer(events, n_parts=1, bpm=120, retrigger_gap=0).cv(sample_rate=SR)
+        _, gate = parts[0]
         boundary = _samples(1.0)
         assert gate.data[boundary - 1] > 0.0
         assert gate.data[boundary] > 0.0
@@ -177,7 +177,7 @@ class TestFromChords:
             ([Pitch(262), Pitch(330), Pitch(392)], 2.0),  # C major, 2 beats
             ([Pitch(349), Pitch(440), Pitch(523)], 2.0),  # F major, 2 beats
         ]
-        ps = PolySequencer.from_chords(chords, n_voices=4, bpm=120)
+        ps = PolySequencer.from_chords(chords, n_parts=4, bpm=120)
 
         # Should produce 6 events total
         assert len(ps.events) == 6
@@ -191,10 +191,10 @@ class TestFromChords:
         chords = [
             ([Pitch(440), Pitch(550)], 1.0),
         ]
-        voices = PolySequencer.from_chords(chords, n_voices=2, bpm=120).cv(sample_rate=SR)
+        parts = PolySequencer.from_chords(chords, n_parts=2, bpm=120).cv(sample_rate=SR)
 
         mid = _samples(0.5)
-        pitches = sorted(voices[i][0].data[mid] for i in range(2))
+        pitches = sorted(parts[i][0].data[mid] for i in range(2))
         assert abs(pitches[0] - 440.0) < 0.01
         assert abs(pitches[1] - 550.0) < 0.01
 

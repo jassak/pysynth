@@ -28,13 +28,13 @@ def tr808_kick(decay: float = 0.7) -> Signal:
     n = int(dur * SAMPLE_RATE)
     t = np.arange(n, dtype=np.float32) / SAMPLE_RATE
     pitch_sig = Signal(np.float32(45.0 + 115.0 * np.exp(-t * 35.0)))
-    body = Oscillator("sine").at(pitch_sig).render(dur)
+    body = Oscillator("sine").render(dur, pitch_sig)
     amp = Envelope([
         Segment(0.004, 0.0, 1.0, curve=-4),
         Segment(decay, 1.0, 0.0, curve=4),
     ])
     click_env = Envelope([Segment(0.003, 1.0, 0.0, curve=-6)])
-    click = click_env.apply(Oscillator("sine").at(160).render(dur)) * 0.6
+    click = click_env.apply(Oscillator("sine").render(dur, 160)) * 0.6
     return amp.apply(body) + click
 
 
@@ -50,8 +50,8 @@ def tr808_snare() -> Signal:
         Segment(dur - 0.001, 1.0, 0.0, curve=3),
     ])
     body = body_env.apply(
-        Oscillator("sine").at(pitch1).render(dur) * 0.5
-        + Oscillator("sine").at(pitch2).render(dur) * 0.3
+        Oscillator("sine").render(dur, pitch1) * 0.5
+        + Oscillator("sine").render(dur, pitch2) * 0.3
     )
     noise_env = Envelope([
         Segment(0.001, 0.0, 1.0, curve=-4),
@@ -68,7 +68,7 @@ def tr808_hihat(open: bool = False) -> Signal:
     dur = 0.3 if open else 0.05
     freqs = [204.5, 298.5, 366.5, 522.7, 540.5, 800.6]
     metal = sum(
-        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        Oscillator("square").render(dur + 0.01, f) * (1.0 / len(freqs))
         for f in freqs
     )
     filtered = (HighPassFilter(7000) | BandPassFilter(7500, 12000))(metal)
@@ -120,8 +120,8 @@ def tr808_cowbell() -> Signal:
     """808 cowbell: two square oscillators at 540 Hz and 800 Hz."""
     dur = 0.12
     sig = (
-        Oscillator("square").at(540).render(dur) * 0.5
-        + Oscillator("square").at(800).render(dur) * 0.5
+        Oscillator("square").render(dur, 540) * 0.5
+        + Oscillator("square").render(dur, 800) * 0.5
     )
     filtered = BandPassFilter(500, 3000)(sig)
     env = Envelope([
@@ -142,7 +142,7 @@ def tr808_tom(pitch: float = 100, decay: float = 0.3) -> Signal:
         Segment(0.002, 0.0, 1.0, curve=-4),
         Segment(decay, 1.0, 0.0, curve=3),
     ])
-    return env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    return env.apply(Oscillator("sine").render(dur, pitch_sig))
 
 
 def tr808_rimshot() -> Signal:
@@ -152,7 +152,7 @@ def tr808_rimshot() -> Signal:
         Segment(0.001, 0.0, 1.0, curve=-6),
         Segment(dur - 0.001, 1.0, 0.0, curve=-3),
     ])
-    tone = tone_env.apply(Oscillator("triangle").at(500).render(dur))
+    tone = tone_env.apply(Oscillator("triangle").render(dur, 500))
     noise = tone_env.apply(
         HighPassFilter(2000)(WhiteNoise().render(dur))
     )
@@ -178,7 +178,7 @@ def tr909_kick() -> Signal:
     """909 kick: pitch sweep via Envelope + click transient."""
     dur = 0.35
     pitch_sig = Envelope([Segment(dur, 1.0, 0.0, curve=-15)]).render(dur) * 200.0 + 50.0
-    body = Oscillator("sine").at(pitch_sig).render(dur)
+    body = Oscillator("sine").render(dur, pitch_sig)
     amp = Envelope([
         Segment(0.002, 0.0, 1.0, curve=-6),
         Segment(0.30, 1.0, 0.0, curve=3),
@@ -196,7 +196,7 @@ def tr909_snare() -> Signal:
         Segment(0.001, 0.0, 1.0, curve=-6),
         Segment(dur - 0.001, 1.0, 0.0, curve=2),
     ])
-    body = body_env.apply(Oscillator("sine").at(pitch_sig).render(dur))
+    body = body_env.apply(Oscillator("sine").render(dur, pitch_sig))
     noise_env = Envelope([
         Segment(0.001, 0.0, 1.0, curve=-4),
         Segment(dur * 0.7, 1.0, 0.15, curve=2),
@@ -213,7 +213,7 @@ def tr909_hihat(open: bool = False) -> Signal:
     dur = 0.4 if open else 0.04
     freqs = [205.3, 304.4, 369.6, 522.7, 540.5, 811.2]
     metal = sum(
-        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        Oscillator("square").render(dur + 0.01, f) * (1.0 / len(freqs))
         for f in freqs
     )
     filtered = (HighPassFilter(9000) | BandPassFilter(9000, 14000))(metal)
@@ -260,7 +260,7 @@ def tr909_ride(dur: float = 0.6) -> Signal:
     """909 ride cymbal: metallic oscillators with longer decay."""
     freqs = [205.3, 304.4, 369.6, 522.7, 540.5, 811.2, 1043.0]
     metal = sum(
-        Oscillator("square").at(f).render(dur + 0.01) * (1.0 / len(freqs))
+        Oscillator("square").render(dur + 0.01, f) * (1.0 / len(freqs))
         for f in freqs
     )
     filtered = (HighPassFilter(5000) | BandPassFilter(6000, 11000))(metal)

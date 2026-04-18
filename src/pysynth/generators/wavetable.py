@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pysynth._core import SAMPLE_RATE, Signal, Generator, _as_array
+from pysynth._core import SAMPLE_RATE, Signal, _as_array
 from pysynth.generators.oscillators import Waveform, _shape
 
 
@@ -19,11 +19,11 @@ class Wavetable:
 
         # Morph from sine through saw to square
         wt = Wavetable.from_waveforms(["sine", "saw", "square"])
-        sig = wt.at(440, position=1.0).render(2.0)   # pure saw
+        sig = wt.render(2.0, 440, position=1.0)   # pure saw
 
         # Time-varying position via an LFO
-        lfo = Oscillator("triangle").at(0.5).render(2.0) * 0.5 + 0.5
-        sig = wt.at(440, position=lfo).render(2.0)
+        lfo = Oscillator("triangle").render(2.0, 0.5) * 0.5 + 0.5
+        sig = wt.render(2.0, 440, position=lfo)
     """
 
     _tables: np.ndarray   # shape (n_tables, table_size), float64
@@ -113,18 +113,25 @@ class Wavetable:
     def table_size(self) -> int:
         return self._table_size
 
-    def at(
+    def render(
         self,
+        dur: float,
         hz: float | Signal,
+        sr: int = SAMPLE_RATE,
+        *,
         position: float | Signal = 0.0,
-    ) -> Generator:
-        """Bind a frequency and table position, returning a Generator.
+    ) -> Signal:
+        """Render the wavetable at the given frequency.
 
         Parameters
         ----------
+        dur:
+            Duration in seconds.
         hz:
             Frequency in Hz.  Accepts a constant float or a time-varying
             Signal (pitch CV, FM modulation).
+        sr:
+            Sample rate.
         position:
             Position in the wavetable, range ``[0, n_tables - 1]``.
             Integer values select an exact table; fractional values crossfade
@@ -133,52 +140,48 @@ class Wavetable:
         tables = self._tables
         tsize = self._table_size
         n_tables = self._n_tables
+        n = int(dur * sr)
 
-        def render(dur: float, sr: int = SAMPLE_RATE) -> Signal:
-            n = int(dur * sr)
-
-            # --- phase accumulation (same logic as _render_component) ---
-            if isinstance(hz, Signal):
-                freq_data = hz.data.astype(np.float64)
-                if len(freq_data) < n:
-                    freq_data = np.pad(freq_data, (0, n - len(freq_data)))
-                else:
-                    freq_data = freq_data[:n]
-                phase_arr = 2.0 * np.pi * np.cumsum(freq_data) / sr
+        # --- phase accumulation (same logic as _render_component) ---
+        if isinstance(hz, Signal):
+            freq_data = hz.data.astype(np.float64)
+            if len(freq_data) < n:
+                freq_data = np.pad(freq_data, (0, n - len(freq_data)))
             else:
-                t = np.arange(n, dtype=np.float64) / sr
-                phase_arr = 2.0 * np.pi * float(hz) * t
+                freq_data = freq_data[:n]
+            phase_arr = 2.0 * np.pi * np.cumsum(freq_data) / sr
+        else:
+            t = np.arange(n, dtype=np.float64) / sr
+            phase_arr = 2.0 * np.pi * float(hz) * t
 
-            # --- normalize phase to float table index ---
-            table_phase = (phase_arr / (2.0 * np.pi)) % 1.0
-            table_idx = table_phase * tsize           # float in [0, tsize)
+        # --- normalize phase to float table index ---
+        table_phase = (phase_arr / (2.0 * np.pi)) % 1.0
+        table_idx = table_phase * tsize           # float in [0, tsize)
 
-            # --- sample interpolation indices ---
-            idx0 = np.floor(table_idx).astype(np.intp) % tsize
-            idx1 = (idx0 + 1) % tsize
-            frac = table_idx - np.floor(table_idx)
+        # --- sample interpolation indices ---
+        idx0 = np.floor(table_idx).astype(np.intp) % tsize
+        idx1 = (idx0 + 1) % tsize
+        frac = table_idx - np.floor(table_idx)
 
-            # --- position (which table / crossfade) ---
-            pos_arr = _as_array(position, n)
-            pos_arr = np.clip(pos_arr, 0.0, n_tables - 1)
+        # --- position (which table / crossfade) ---
+        pos_arr = _as_array(position, n)
+        pos_arr = np.clip(pos_arr, 0.0, n_tables - 1)
 
-            tbl0 = np.floor(pos_arr).astype(np.intp)
-            tbl1 = np.minimum(tbl0 + 1, n_tables - 1)
-            pos_frac = pos_arr - np.floor(pos_arr)
+        tbl0 = np.floor(pos_arr).astype(np.intp)
+        tbl1 = np.minimum(tbl0 + 1, n_tables - 1)
+        pos_frac = pos_arr - np.floor(pos_arr)
 
-            # --- bilinear interpolation (vectorized) ---
-            v00 = tables[tbl0, idx0]
-            v01 = tables[tbl0, idx1]
-            v10 = tables[tbl1, idx0]
-            v11 = tables[tbl1, idx1]
+        # --- bilinear interpolation (vectorized) ---
+        v00 = tables[tbl0, idx0]
+        v01 = tables[tbl0, idx1]
+        v10 = tables[tbl1, idx0]
+        v11 = tables[tbl1, idx1]
 
-            interp_low = v00 + frac * (v01 - v00)
-            interp_high = v10 + frac * (v11 - v10)
-            output = interp_low + pos_frac * (interp_high - interp_low)
+        interp_low = v00 + frac * (v01 - v00)
+        interp_high = v10 + frac * (v11 - v10)
+        output = interp_low + pos_frac * (interp_high - interp_low)
 
-            return Signal(output.astype(np.float32), sr)
-
-        return Generator(render, name=f"{self!r}.at({hz})")
+        return Signal(output.astype(np.float32), sr)
 
     def __repr__(self) -> str:
         return f"Wavetable(tables={self._n_tables}, size={self._table_size})"

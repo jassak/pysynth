@@ -52,7 +52,7 @@ class TestConstruction:
         arr = np.ones(64)
         wt = Wavetable([arr], table_size=64)
         arr[:] = 999.0
-        sig = wt.at(100).render(0.01, SR)
+        sig = wt.render(0.01, 100, SR)
         # should still be ~1.0, not 999
         assert np.max(np.abs(sig.data)) < 1.1
 
@@ -70,7 +70,7 @@ class TestSingleTable:
     def test_sine_matches_shape(self):
         """A single sine wavetable should closely match _shape('sine', ...)."""
         wt = Wavetable.from_waveforms(["sine"], table_size=4096)
-        sig = wt.at(100).render(0.05, SR)
+        sig = wt.render(0.05, 100, SR)
         # generate reference via _shape
         n = int(0.05 * SR)
         t = np.arange(n, dtype=np.float64) / SR
@@ -80,7 +80,7 @@ class TestSingleTable:
 
     def test_saw_matches_shape(self):
         wt = Wavetable.from_waveforms(["saw"], table_size=4096)
-        sig = wt.at(100).render(0.05, SR)
+        sig = wt.render(0.05, 100, SR)
         n = int(0.05 * SR)
         t = np.arange(n, dtype=np.float64) / SR
         phase = 2.0 * np.pi * 100.0 * t
@@ -89,7 +89,7 @@ class TestSingleTable:
 
     def test_output_duration_and_sr(self):
         wt = Wavetable.from_waveforms(["sine"])
-        sig = wt.at(440).render(1.0, SR)
+        sig = wt.render(1.0, 440, SR)
         assert sig.sample_rate == SR
         assert len(sig.data) == SR
 
@@ -102,22 +102,22 @@ class TestSingleTable:
 class TestPosition:
     def test_position_zero_gives_first_table(self):
         wt = Wavetable.from_waveforms(["sine", "square"], table_size=4096)
-        sig0 = wt.at(100, position=0.0).render(0.05, SR)
-        sig_ref = Wavetable.from_waveforms(["sine"], table_size=4096).at(100).render(0.05, SR)
+        sig0 = wt.render(0.05, 100, SR, position=0.0)
+        sig_ref = Wavetable.from_waveforms(["sine"], table_size=4096).render(0.05, 100, SR)
         np.testing.assert_allclose(sig0.data, sig_ref.data, atol=1e-6)
 
     def test_position_max_gives_last_table(self):
         wt = Wavetable.from_waveforms(["sine", "square"], table_size=4096)
-        sig1 = wt.at(100, position=1.0).render(0.05, SR)
-        sig_ref = Wavetable.from_waveforms(["square"], table_size=4096).at(100).render(0.05, SR)
+        sig1 = wt.render(0.05, 100, SR, position=1.0)
+        sig_ref = Wavetable.from_waveforms(["square"], table_size=4096).render(0.05, 100, SR)
         np.testing.assert_allclose(sig1.data, sig_ref.data, atol=1e-6)
 
     def test_midpoint_is_average(self):
         """Position 0.5 between two tables should be the average of both."""
         wt = Wavetable.from_waveforms(["sine", "saw"], table_size=4096)
-        sig_mid = wt.at(100, position=0.5).render(0.05, SR)
-        sig_a = wt.at(100, position=0.0).render(0.05, SR)
-        sig_b = wt.at(100, position=1.0).render(0.05, SR)
+        sig_mid = wt.render(0.05, 100, SR, position=0.5)
+        sig_a = wt.render(0.05, 100, SR, position=0.0)
+        sig_b = wt.render(0.05, 100, SR, position=1.0)
         expected = (sig_a.data + sig_b.data) / 2.0
         np.testing.assert_allclose(sig_mid.data, expected, atol=1e-5)
 
@@ -128,19 +128,19 @@ class TestPosition:
         n = int(dur * SR)
         # ramp from 0 to 1 over the duration
         pos = _sig(np.linspace(0, 1, n), SR)
-        sig = wt.at(100, position=pos).render(dur, SR)
+        sig = wt.render(dur, 100, SR, position=pos)
         assert len(sig.data) == n
 
     def test_position_clamped_below_zero(self):
         wt = Wavetable.from_waveforms(["sine", "saw"])
-        sig_neg = wt.at(100, position=-1.0).render(0.01, SR)
-        sig_zero = wt.at(100, position=0.0).render(0.01, SR)
+        sig_neg = wt.render(0.01, 100, SR, position=-1.0)
+        sig_zero = wt.render(0.01, 100, SR, position=0.0)
         np.testing.assert_allclose(sig_neg.data, sig_zero.data, atol=1e-6)
 
     def test_position_clamped_above_max(self):
         wt = Wavetable.from_waveforms(["sine", "saw"])
-        sig_over = wt.at(100, position=5.0).render(0.01, SR)
-        sig_max = wt.at(100, position=1.0).render(0.01, SR)
+        sig_over = wt.render(0.01, 100, SR, position=5.0)
+        sig_max = wt.render(0.01, 100, SR, position=1.0)
         np.testing.assert_allclose(sig_over.data, sig_max.data, atol=1e-6)
 
 
@@ -156,7 +156,7 @@ class TestFrequency:
     def test_constant_frequency_pitch(self):
         """A 100 Hz sine over 1s: verify period via autocorrelation peak."""
         wt = Wavetable.from_waveforms(["sine"], table_size=4096)
-        sig = wt.at(100).render(1.0, SR)
+        sig = wt.render(1.0, 100, SR)
         # autocorrelation peak at lag = SR/freq = 40 samples
         data = sig.data.astype(np.float64)
         expected_lag = SR // 100
@@ -174,8 +174,8 @@ class TestFrequency:
         dur = 0.1
         n = int(dur * SR)
         hz_sig = _sig(np.full(n, 200.0), SR)
-        sig_const = wt.at(200).render(dur, SR)
-        sig_signal = wt.at(hz_sig).render(dur, SR)
+        sig_const = wt.render(dur, 200, SR)
+        sig_signal = wt.render(dur, hz_sig, SR)
         # cumsum is one sample ahead of arange: signal_rate[k] ≈ const[k+1]
         np.testing.assert_allclose(sig_signal.data[:-1], sig_const.data[1:], atol=1e-4)
 
@@ -202,7 +202,7 @@ class TestFromSample:
         data = np.sin(np.linspace(0, 8 * np.pi, n, endpoint=False)).astype(np.float32)
         s = Sample(data, SR)
         wt = Wavetable.from_sample(s, n_frames=4, table_size=256)
-        sig = wt.at(100).render(0.05, SR)
+        sig = wt.render(0.05, 100, SR)
         assert len(sig.data) == int(0.05 * SR)
         assert np.max(np.abs(sig.data)) > 0.01
 
@@ -215,7 +215,7 @@ class TestFromSample:
         wt = Wavetable.from_sample(s, n_frames=1, table_size=64)
         assert wt.n_tables == 1
         # Mixed: (1 + -1) / 2 = 0
-        sig = wt.at(100).render(0.01, SR)
+        sig = wt.render(0.01, 100, SR)
         assert np.max(np.abs(sig.data)) < 0.01
 
     def test_too_short_raises(self):

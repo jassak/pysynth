@@ -4,7 +4,7 @@ from typing import Literal
 
 import numpy as np
 
-from pysynth._core import SAMPLE_RATE, Signal, Generator
+from pysynth._core import SAMPLE_RATE, Signal
 
 
 Waveform = Literal["sine", "square", "saw", "triangle", "pulse"]
@@ -53,7 +53,7 @@ class Oscillator:
 
     An Oscillator defines *how* to produce a sound (waveform shape and harmonic
     structure) without committing to an absolute frequency. Frequency is
-    supplied via ``.at(hz)``, which returns a Generator ready to render.
+    supplied at render time via ``.render(dur, hz)``.
 
     The second constructor argument, ``ratio``, is a **relative frequency
     multiplier**. ``Oscillator("sine", 2)`` renders at twice the fundamental.
@@ -65,7 +65,7 @@ class Oscillator:
         ``osc1 + osc2``    — sum the two waveforms (returns new Oscillator)
 
     These operations compose oscillator *definitions*, not rendered Signals.
-    Audio is only produced after calling ``.at(hz).render(dur)``.
+    Audio is only produced after calling ``.render(dur, hz)``.
 
     Examples::
 
@@ -74,15 +74,15 @@ class Oscillator:
                  + Oscillator("sine", 2) * 0.5
                  + Oscillator("sine", 3) * 0.25
                  + Oscillator("sine", 4) * 0.125)
-        sig = hammond.at(220).render(2.0)
+        sig = hammond.render(2.0, 220)
 
         # FM synthesis: pass a modulator Signal as hz
-        mod = Oscillator("sine").at(110).render(2.0) * 60
-        sig = Oscillator("sine").at(220 + mod).render(2.0)
+        mod = Oscillator("sine").render(2.0, 110) * 60
+        sig = Oscillator("sine").render(2.0, 220 + mod)
 
         # CV/gate sequencing
         pitch, gate = Sequencer(notes, bpm=120).cv()
-        audio = Oscillator("saw").at(pitch).render(pitch.duration)
+        audio = Oscillator("saw").render(pitch.duration, pitch)
         output = audio * adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
     """
 
@@ -116,29 +116,28 @@ class Oscillator:
         return result
 
     # ------------------------------------------------------------------ #
-    # Pitch application                                                    #
+    # Rendering                                                            #
     # ------------------------------------------------------------------ #
 
-    def at(self, hz: float | Signal) -> Generator:
-        """Fix the frequency, returning a Generator ready to render.
+    def render(self, dur: float, hz: float | Signal, sr: int = SAMPLE_RATE) -> Signal:
+        """Render the oscillator at the given frequency.
 
         Parameters
         ----------
+        dur:
+            Duration in seconds.
         hz:
             Fundamental frequency in Hz. Each component renders at ``hz * ratio``.
             Accepts a constant float or a time-varying ``Signal`` (e.g. a pitch
             CV from a Sequencer, or a modulation signal for vibrato/FM).
+        sr:
+            Sample rate.
         """
-        components = self._components
-
-        def render(dur: float, sr: int = SAMPLE_RATE) -> Signal:
-            n = int(dur * sr)
-            buf = np.zeros(n, dtype=np.float64)
-            for waveform, ratio, amplitude, phase in components:
-                buf += _render_component(waveform, hz * ratio, amplitude, phase, n, sr)
-            return Signal(buf.astype(np.float32), sr)
-
-        return Generator(render, name=f"{self!r}.at({hz})")
+        n = int(dur * sr)
+        buf = np.zeros(n, dtype=np.float64)
+        for waveform, ratio, amplitude, phase in self._components:
+            buf += _render_component(waveform, hz * ratio, amplitude, phase, n, sr)
+        return Signal(buf.astype(np.float32), sr)
 
     def __repr__(self) -> str:
         if len(self._components) == 1:

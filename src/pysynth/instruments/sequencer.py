@@ -42,7 +42,7 @@ class Sequencer:
         notes = [Note(scale[i], 0.5) for i in [0, 1, 2, 3, 2, 1, 0]]
 
         pitch, gate = Sequencer(notes, bpm=120).cv()
-        audio  = Oscillator("saw").at(pitch).render(pitch.duration)
+        audio  = Oscillator("saw").render(pitch.duration, pitch)
         amp    = adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
         cutoff = adsr(0.005, 0.2, 0.0, 0.05).trigger(gate) * 3000 + 400
         output = LowPassFilter(cutoff)(audio) * amp

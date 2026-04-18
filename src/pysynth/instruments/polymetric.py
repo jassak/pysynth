@@ -28,7 +28,7 @@ class PolymetricSequencer:
 
         signals = seq.cv(beats=16)
         pitch, gate = signals["melody"]
-        audio = Oscillator("saw").at(pitch).render(pitch.duration)
+        audio = Oscillator("saw").render(pitch.duration, pitch)
         output = audio * adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
 
     Parameters

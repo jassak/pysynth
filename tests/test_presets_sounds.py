@@ -84,7 +84,7 @@ class TestPadPresets:
         assert not np.all(sig.data == 0)
 
     def test_string_pad(self):
-        sig = string_pad(n_voices=3).render(220, dur=1.0)
+        sig = string_pad(n_layers=3).render(220, dur=1.0)
         assert not np.all(sig.data == 0)
 
 

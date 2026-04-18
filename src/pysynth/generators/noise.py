@@ -12,8 +12,8 @@ class WhiteNoise:
         self.amplitude = amplitude
         self.sample_rate = sample_rate
 
-    def render(self, duration: float) -> Signal:
-        n = int(duration * self.sample_rate)
+    def render(self, dur: float) -> Signal:
+        n = int(dur * self.sample_rate)
         data = np.random.uniform(-1.0, 1.0, n).astype(np.float32) * self.amplitude
         return Signal(data, self.sample_rate)
 
@@ -28,8 +28,8 @@ class PinkNoise:
         self.amplitude = amplitude
         self.sample_rate = sample_rate
 
-    def render(self, duration: float) -> Signal:
-        n = int(duration * self.sample_rate)
+    def render(self, dur: float) -> Signal:
+        n = int(dur * self.sample_rate)
         # Paul Kellett's refined method: sum of filtered white noise sources
         # Each row advances at half the rate of the previous, summed together.
         n_rows = 16

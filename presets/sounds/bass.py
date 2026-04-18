@@ -19,7 +19,7 @@ def acid_bass(
     env = adsr(attack, decay, sustain, release)
 
     def synth(hz, gate, _env=env):
-        return Oscillator("saw").at(hz).render(gate.duration) * 0.5 * _env.trigger(gate)
+        return Oscillator("saw").render(gate.duration, hz) * 0.5 * _env.trigger(gate)
 
     return Patch(synth=synth, name="acid_bass")
 
@@ -34,7 +34,7 @@ def sub_bass(
     env = adsr(attack, decay, sustain, release)
 
     def synth(hz, gate, _env=env):
-        return Oscillator("sine").at(hz).render(gate.duration) * 0.6 * _env.trigger(gate)
+        return Oscillator("sine").render(gate.duration, hz) * 0.6 * _env.trigger(gate)
 
     return Patch(synth=synth, name="sub_bass")
 
@@ -54,8 +54,8 @@ def detuned_saw(
     env = adsr(attack, decay, sustain, release)
 
     def synth(hz, gate, _d=detune, _env=env):
-        a = Oscillator("saw").at(hz * (1 + _d)).render(gate.duration)
-        b = Oscillator("saw").at(hz * (1 - _d)).render(gate.duration)
+        a = Oscillator("saw").render(gate.duration, hz * (1 + _d))
+        b = Oscillator("saw").render(gate.duration, hz * (1 - _d))
         return (a + b) * 0.35 * _env.trigger(gate)
 
     return Patch(synth=synth, name="detuned_saw")

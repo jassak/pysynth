@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from pysynth._core import SAMPLE_RATE, Signal, Generator
+from pysynth._core import SAMPLE_RATE, Signal
 from pysynth.generators.oscillators import Oscillator, _shape
 from pysynth.generators.noise import WhiteNoise, PinkNoise
 
@@ -61,25 +61,25 @@ class TestShape:
 
 
 class TestOscillator:
-    def test_at_returns_generator(self):
-        gen = Oscillator("sine").at(440)
-        assert isinstance(gen, Generator)
+    def test_render_returns_signal(self):
+        sig = Oscillator("sine").render(1.0, 440, SR)
+        assert isinstance(sig, Signal)
 
     def test_render_duration(self):
-        sig = Oscillator("sine").at(440).render(1.0, SR)
+        sig = Oscillator("sine").render(1.0, 440, SR)
         assert abs(sig.duration - 1.0) < 0.001
 
     def test_render_sample_rate(self):
-        sig = Oscillator("sine").at(440).render(0.5, SR)
+        sig = Oscillator("sine").render(0.5, 440, SR)
         assert sig.sample_rate == SR
 
     def test_sine_amplitude_bound(self):
-        sig = Oscillator("sine").at(100).render(0.5, SR)
+        sig = Oscillator("sine").render(0.5, 100, SR)
         assert np.abs(sig.data).max() <= 1.0 + 1e-6
 
     def test_ratio_doubles_frequency(self):
-        sig1 = Oscillator("sine", ratio=1).at(100).render(0.1, SR)
-        sig2 = Oscillator("sine", ratio=2).at(100).render(0.1, SR)
+        sig1 = Oscillator("sine", ratio=1).render(0.1, 100, SR)
+        sig2 = Oscillator("sine", ratio=2).render(0.1, 100, SR)
         crossings1 = np.sum(np.diff(np.sign(sig1.data)) != 0)
         crossings2 = np.sum(np.diff(np.sign(sig2.data)) != 0)
         assert crossings2 > crossings1 * 1.5
@@ -123,7 +123,7 @@ class TestOscillatorAlgebra:
 
     def test_additive_synthesis_renders(self):
         osc = Oscillator("sine") + Oscillator("sine", 2) * 0.5
-        sig = osc.at(220).render(0.5, SR)
+        sig = osc.render(0.5, 220, SR)
         assert len(sig.data) == int(0.5 * SR)
 
     def test_repr_single_component(self):
@@ -141,14 +141,14 @@ class TestOscillatorAlgebra:
 
 
 class TestSignalRatePitch:
-    def test_at_signal_returns_generator(self):
+    def test_signal_pitch_returns_signal(self):
         pitch_cv = Signal(np.full(SR, 440.0, dtype=np.float32), SR)
-        gen = Oscillator("sine").at(pitch_cv)
-        assert isinstance(gen, Generator)
+        sig = Oscillator("sine").render(1.0, pitch_cv, SR)
+        assert isinstance(sig, Signal)
 
-    def test_at_signal_renders(self):
+    def test_signal_pitch_renders(self):
         pitch_cv = Signal(np.full(SR, 440.0, dtype=np.float32), SR)
-        sig = Oscillator("sine").at(pitch_cv).render(1.0, SR)
+        sig = Oscillator("sine").render(1.0, pitch_cv, SR)
         assert abs(sig.duration - 1.0) < 0.001
 
     def test_constant_signal_matches_float_frequency(self):
@@ -157,9 +157,9 @@ class TestSignalRatePitch:
         # since cumsum phase integration diverges from the direct formula.
         dur = 0.1
         n = int(dur * SR)
-        sig_float = Oscillator("sine").at(440.0).render(dur, SR)
+        sig_float = Oscillator("sine").render(dur, 440.0, SR)
         pitch_cv = Signal(np.full(n, 440.0, dtype=np.float32), SR)
-        sig_signal = Oscillator("sine").at(pitch_cv).render(dur, SR)
+        sig_signal = Oscillator("sine").render(dur, pitch_cv, SR)
         zc_float = np.sum(np.diff(np.sign(sig_float.data)) != 0)
         zc_signal = np.sum(np.diff(np.sign(sig_signal.data)) != 0)
         assert abs(zc_float - zc_signal) <= 1
@@ -168,8 +168,8 @@ class TestSignalRatePitch:
         dur = 0.1
         n = int(dur * SR)
         pitch_cv = Signal(np.full(n, 100.0, dtype=np.float32), SR)
-        sig1 = Oscillator("sine", ratio=1).at(pitch_cv).render(dur, SR)
-        sig2 = Oscillator("sine", ratio=2).at(pitch_cv).render(dur, SR)
+        sig1 = Oscillator("sine", ratio=1).render(dur, pitch_cv, SR)
+        sig2 = Oscillator("sine", ratio=2).render(dur, pitch_cv, SR)
         crossings1 = np.sum(np.diff(np.sign(sig1.data)) != 0)
         crossings2 = np.sum(np.diff(np.sign(sig2.data)) != 0)
         assert crossings2 > crossings1 * 1.5
