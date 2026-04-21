@@ -4,10 +4,11 @@ import numpy as np
 from scipy.signal import get_window
 
 from pysynth._core import SAMPLE_RATE, Signal, _as_array
+from pysynth.generators.base import Generator
 from pysynth.generators.sample import Sample
 
 
-class Granular:
+class Granular(Generator):
     """Granular synthesis engine that reads overlapping grains from a Sample.
 
     All parameters (except ``sample`` and ``window``) accept a float for a
@@ -64,7 +65,7 @@ class Granular:
         self._window = window
         self._seed = seed
 
-    def render(self, dur: float, hz: float | Signal | None = None, sr: int = SAMPLE_RATE) -> Signal:
+    def render(self, dur: float, hz: float | Signal | None = None, sr: int = SAMPLE_RATE, **_kwargs) -> Signal:
         """Render granular output.
 
         Parameters

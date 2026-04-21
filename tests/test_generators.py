@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from pysynth._core import SAMPLE_RATE, Signal
+from pysynth.generators.base import Generator, _ScaledGen, _SumGens
 from pysynth.generators.oscillators import Oscillator, _shape
 from pysynth.generators.noise import WhiteNoise, PinkNoise
 
@@ -86,7 +87,7 @@ class TestOscillator:
 
     def test_default_waveform_is_sine(self):
         osc = Oscillator()
-        assert osc._components[0][0] == "sine"
+        assert osc._waveform == "sine"
 
 
 # ------------------------------------------------------------------ #
@@ -95,44 +96,48 @@ class TestOscillator:
 
 
 class TestOscillatorAlgebra:
-    def test_mul_scalar_scales_amplitude(self):
-        osc = Oscillator("sine") * 0.5
-        assert osc._components[0][2] == 0.5
+    def test_mul_scalar_returns_scaled_gen(self):
+        gen = Oscillator("sine") * 0.5
+        assert isinstance(gen, _ScaledGen)
 
     def test_rmul_scalar(self):
-        osc = 0.3 * Oscillator("sine")
-        assert osc._components[0][2] == pytest.approx(0.3)
+        gen = 0.3 * Oscillator("sine")
+        assert isinstance(gen, _ScaledGen)
 
     def test_mul_does_not_mutate(self):
         osc = Oscillator("sine")
         _ = osc * 0.5
-        assert osc._components[0][2] == 1.0
+        assert osc._waveform == "sine"
+        assert osc._ratio == 1.0
 
-    def test_add_merges_components(self):
-        osc = Oscillator("sine") + Oscillator("saw", 2)
-        assert len(osc._components) == 2
-        assert osc._components[0][0] == "sine"
-        assert osc._components[1][0] == "saw"
+    def test_add_returns_sum_gens(self):
+        gen = Oscillator("sine") + Oscillator("saw", 2)
+        assert isinstance(gen, _SumGens)
 
     def test_add_does_not_mutate(self):
         a = Oscillator("sine")
         b = Oscillator("saw")
         _ = a + b
-        assert len(a._components) == 1
-        assert len(b._components) == 1
+        assert a._waveform == "sine"
+        assert b._waveform == "saw"
 
     def test_additive_synthesis_renders(self):
-        osc = Oscillator("sine") + Oscillator("sine", 2) * 0.5
-        sig = osc.render(0.5, 220, SR)
+        gen = Oscillator("sine") + Oscillator("sine", 2) * 0.5
+        sig = gen.render(0.5, hz=220, sr=SR)
         assert len(sig.data) == int(0.5 * SR)
 
     def test_repr_single_component(self):
         r = repr(Oscillator("saw", ratio=2.0))
         assert "saw" in r
 
-    def test_repr_multi_component(self):
-        osc = Oscillator("sine") + Oscillator("saw")
-        assert "components=2" in repr(osc)
+    def test_repr_composite(self):
+        gen = Oscillator("sine") + Oscillator("saw")
+        r = repr(gen)
+        assert "+" in r
+
+    def test_isinstance_generator(self):
+        assert isinstance(Oscillator("sine"), Generator)
+        assert isinstance(WhiteNoise(), Generator)
 
 
 # ------------------------------------------------------------------ #

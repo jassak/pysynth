@@ -18,7 +18,7 @@ from pysynth import ( SAMPLE_RATE, Signal, Oscillator, WhiteNoise,
     Echo, Tanh, Clip, Overdrive, Pitch, Note, Scale, Sequencer, Step, StepSequencer,
     Arpeggiator, Mixer, pan, stft, freeze, smear, shift_bins, cross_synthesize,
     pitch_shift, SpectralFreeze, SpectralSmear, PitchShift, Vocoder, ConvolutionReverb,
-    DrumMachine, Percussion, PolymetricSequencer, Sample, Granular,
+    DrumMachine, Percussion, PolymetricSequencer, Sample, Granular, Operator,
 )
 
 DUR = 3.0
@@ -1691,3 +1691,156 @@ def wt_from_sample():
     n = int(dur * SAMPLE_RATE)
     pos = Signal(np.linspace(0, n_cycles - 1, n, dtype=np.float32), SAMPLE_RATE)
     return wt.render(dur, 220, position=pos) * 0.5
+
+
+# ---------------------------------------------------------------------------
+# 24. FM synthesis with the Operator class
+# ---------------------------------------------------------------------------
+# The << operator means "right-hand side modulates left-hand side's pitch".
+# Operator(generator, envelope) pairs a Generator with an Envelope.
+# Modulation depth is controlled by scaling the modulator's generator:
+#   Oscillator("sine", ratio=2) * 200  means ±200 Hz deviation.
+
+
+def _fm_gate(dur=DUR, hold=None):
+    """Helper: a gate signal high for *hold* seconds (default: full duration)."""
+    import numpy as np
+    n = int(dur * SAMPLE_RATE)
+    h = int((hold or dur) * SAMPLE_RATE)
+    data = np.zeros(n, dtype=np.float32)
+    data[:min(h, n)] = 1.0
+    return Signal(data, SAMPLE_RATE)
+
+
+def fm_electric_piano(hz=220):
+    """Classic DX7 e-piano: 2-operator FM.
+
+    Modulator at 2x carrier frequency with a fast-decaying envelope
+    produces the characteristic bright attack that mellows quickly.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.005, 0.3, 0.5, 0.4))
+    mod = Operator(
+        Oscillator("sine", ratio=2) * (hz * 3.5),   # mod index ~3.5
+        adsr(0.005, 0.2, 0.0, 0.1),                 # brightness fades
+    )
+    return (carrier << mod).render(hz, _fm_gate(2.0, 1.0)) * 0.4
+
+
+def fm_bell(hz=880):
+    """Inharmonic FM bell: irrational ratio produces metallic timbre.
+
+    The 1:1.41 ratio (roughly sqrt(2)) is a classic DX7 trick — the
+    non-integer relationship creates dense, non-harmonic sidebands.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.001, 1.5, 0.0, 0.01))
+    mod = Operator(
+        Oscillator("sine", ratio=1.41) * (hz * 5),
+        adsr(0.001, 0.8, 0.0, 0.01),
+    )
+    return (carrier << mod).render(hz, _fm_gate(2.0)) * 0.3
+
+
+def fm_bass(hz=55):
+    """Fat FM bass: modulator at half the carrier frequency.
+
+    Sub-ratio modulation (ratio < 1) creates asymmetric waveforms
+    with strong even harmonics — beefy and subby.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.005, 0.15, 0.6, 0.1))
+    mod = Operator(
+        Oscillator("sine", ratio=0.5) * (hz * 2),
+        adsr(0.005, 0.1, 0.4, 0.08),
+    )
+    return (carrier << mod).render(hz, _fm_gate(1.5, 1.0)) * 0.5
+
+
+def fm_brass(hz=220):
+    """FM brass stab: slow attack on modulation depth simulates embouchure.
+
+    Both carrier and modulator use the same 2:1 ratio but the modulator's
+    envelope opens slowly, brightening the tone over the attack phase.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.05, 0.1, 0.8, 0.15))
+    mod = Operator(
+        Oscillator("sine", ratio=2) * (hz * 4),
+        adsr(0.50, 0.2, 0.5, 0.1),    # slow attack = gradual brightness
+    )
+    return (carrier << mod).render(hz, _fm_gate(2.0, 1.5)) * 0.4
+
+
+def fm_cascade_organ(hz=220):
+    """3-operator cascade: mod2 -> mod1 -> carrier.
+
+    This is DX7 algorithm 1 topology. Each modulator adds harmonic
+    complexity — mod2 roughens mod1's output, which in turn creates
+    richer sidebands on the carrier. The result is a thick, evolving
+    organ-like timbre.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.01, 0.1, 0.8, 0.2))
+    mod1 = Operator(
+        Oscillator("sine", ratio=2) * (hz * 2),
+        adsr(0.01, 0.3, 0.4, 0.15),
+    )
+    mod2 = Operator(
+        Oscillator("sine", ratio=3) * (hz * 1),
+        adsr(0.01, 0.5, 0.2, 0.1),
+    )
+    # cascade: mod2 modulates mod1, which modulates carrier
+    return (carrier << (mod1 << mod2)).render(hz, _fm_gate(3.0, 2.0)) * 0.3
+
+
+def fm_cascade_scream(hz=440):
+    """3-operator cascade with high indices: aggressive, screaming lead.
+
+    Deep cascaded modulation pushes the spectrum into noise-like
+    territory at the attack, settling into a harsh but pitched tone
+    as the modulator envelopes decay.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.005, 0.2, 0.6, 0.2))
+    mod1 = Operator(
+        Oscillator("sine", ratio=1) * (hz * 8),     # deep modulation
+        adsr(0.005, 0.3, 0.1, 0.15),
+    )
+    mod2 = Operator(
+        Oscillator("sine", ratio=3) * (hz * 4),
+        adsr(0.005, 0.15, 0.0, 0.1),                # fast decay = attack transient
+    )
+    return (carrier << (mod1 << mod2)).render(hz, _fm_gate(2.0, 1.5)) * 0.25
+
+
+def fm_parallel_pad(hz=220):
+    """Parallel modulation: two modulators independently affecting the carrier.
+
+    Using operator addition (mod1 + mod2) before <<, both modulators
+    contribute to the carrier's frequency deviation simultaneously.
+    Different ratios and envelopes create a shimmering, evolving texture.
+    """
+    carrier = Operator(Oscillator("sine"), adsr(0.3, 0.2, 0.7, 0.5))
+    mod1 = Operator(
+        Oscillator("sine", ratio=3) * (hz * 1.5),
+        adsr(0.5, 0.3, 0.3, 0.4),
+    )
+    mod2 = Operator(
+        Oscillator("sine", ratio=5.01) * (hz * 0.8),  # slightly off-harmonic
+        adsr(0.8, 0.4, 0.2, 0.3),
+    )
+    return (carrier << (mod1 + mod2)).render(hz, _fm_gate(4.0, 3.0)) * 0.3
+
+
+def fm_additive_keys(hz=220):
+    """Two FM operators mixed additively — each with its own timbre.
+
+    Operator addition gives each voice independent envelopes: a bright
+    percussive attack from the FM pair, plus a warm sustained sine.
+    """
+    # Bright percussive layer
+    bright = Operator(Oscillator("sine"), adsr(0.005, 0.15, 0.0, 0.01))
+    bright_mod = Operator(
+        Oscillator("sine", ratio=3) * (hz * 4),
+        adsr(0.005, 0.08, 0.0, 0.01),
+    )
+    # Warm sustain layer
+    warm = Operator(Oscillator("sine"), adsr(0.01, 0.2, 0.6, 0.3))
+
+    voice = (bright << bright_mod) + warm * 0.6
+    return voice.render(hz, _fm_gate(2.0, 1.2)) * 0.35

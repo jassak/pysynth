@@ -7,10 +7,11 @@ import numpy as np
 from scipy.io import wavfile
 
 from pysynth._core import SAMPLE_RATE, Signal, _as_array
+from pysynth.generators.base import Generator
 
 
 @dataclass
-class Sample:
+class Sample(Generator):
     """A recorded or synthesized audio snippet — the sample-based counterpart
     of :class:`Oscillator` and :class:`Wavetable`.
 
@@ -144,7 +145,7 @@ class Sample:
     # Rendering                                                            #
     # ------------------------------------------------------------------ #
 
-    def render(self, dur: float, hz: float | Signal | None = None, sr: int = SAMPLE_RATE) -> Signal:
+    def render(self, dur: float, hz: float | Signal | None = None, sr: int = SAMPLE_RATE, **_kwargs) -> Signal:
         """Render the sample.
 
         Parameters

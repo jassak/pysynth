@@ -3,10 +3,11 @@ from __future__ import annotations
 import numpy as np
 
 from pysynth._core import SAMPLE_RATE, Signal, _as_array
+from pysynth.generators.base import Generator
 from pysynth.generators.oscillators import Waveform, _shape
 
 
-class Wavetable:
+class Wavetable(Generator):
     """Wavetable oscillator with position morphing between stored waveforms.
 
     A Wavetable stores one or more single-cycle waveforms as fixed-size arrays.
@@ -116,10 +117,11 @@ class Wavetable:
     def render(
         self,
         dur: float,
-        hz: float | Signal,
+        hz: float | Signal = 440.0,
         sr: int = SAMPLE_RATE,
         *,
         position: float | Signal = 0.0,
+        **_kwargs,
     ) -> Signal:
         """Render the wavetable at the given frequency.
 
@@ -142,7 +144,7 @@ class Wavetable:
         n_tables = self._n_tables
         n = int(dur * sr)
 
-        # --- phase accumulation (same logic as _render_component) ---
+        # --- phase accumulation (same logic as Oscillator.render) ---
         if isinstance(hz, Signal):
             freq_data = hz.data.astype(np.float64)
             if len(freq_data) < n:

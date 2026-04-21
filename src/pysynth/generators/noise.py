@@ -3,22 +3,23 @@ from __future__ import annotations
 import numpy as np
 
 from pysynth._core import SAMPLE_RATE, Signal
+from pysynth.generators.base import Generator
 
 
-class WhiteNoise:
+class WhiteNoise(Generator):
     """Uniform white noise — equal energy at all frequencies."""
 
     def __init__(self, amplitude: float = 1.0, sample_rate: int = SAMPLE_RATE) -> None:
         self.amplitude = amplitude
         self.sample_rate = sample_rate
 
-    def render(self, dur: float) -> Signal:
+    def render(self, dur: float, **_kwargs) -> Signal:
         n = int(dur * self.sample_rate)
         data = np.random.uniform(-1.0, 1.0, n).astype(np.float32) * self.amplitude
         return Signal(data, self.sample_rate)
 
 
-class PinkNoise:
+class PinkNoise(Generator):
     """Pink noise (1/f spectrum) via Voss-McCartney algorithm.
 
     Pink noise has equal energy per octave, giving a warmer sound than white noise.
@@ -28,7 +29,7 @@ class PinkNoise:
         self.amplitude = amplitude
         self.sample_rate = sample_rate
 
-    def render(self, dur: float) -> Signal:
+    def render(self, dur: float, **_kwargs) -> Signal:
         n = int(dur * self.sample_rate)
         # Paul Kellett's refined method: sum of filtered white noise sources
         # Each row advances at half the rate of the previous, summed together.

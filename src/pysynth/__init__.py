@@ -1,6 +1,7 @@
 from pysynth._core import SAMPLE_RATE, Signal, Effect
-from pysynth.generators import Oscillator, WhiteNoise, PinkNoise, Wavetable, Sample, Granular
+from pysynth.generators import Generator, Oscillator, WhiteNoise, PinkNoise, Wavetable, Sample, Granular
 from pysynth.envelopes import Segment, Envelope, adsr
+from pysynth.operators import Operator
 from pysynth.effects import (
     LowPassFilter, HighPassFilter, BandPassFilter,
     Gain, Compressor, Limiter,

@@ -26,7 +26,7 @@ def organ(
     env = adsr(attack, decay, sustain, release)
 
     def synth(hz, gate, _osc=osc, _env=env):
-        return _osc.render(gate.duration, hz) * 0.25 * _env.trigger(gate)
+        return _osc.render(gate.duration, hz=hz) * 0.25 * _env.trigger(gate)
 
     return Patch(synth=synth, name="organ")
 
@@ -47,6 +47,6 @@ def electric_piano(
     env = adsr(attack, decay, sustain, release)
 
     def synth(hz, gate, _osc=osc, _env=env):
-        return _osc.render(gate.duration, hz) * 0.4 * _env.trigger(gate)
+        return _osc.render(gate.duration, hz=hz) * 0.4 * _env.trigger(gate)
 
     return Patch(synth=synth, name="electric_piano")

@@ -29,11 +29,36 @@ A Python audio synthesis library built around a few mathematical abstractions an
 
 ### Generators (`src/pysynth/generators/`)
 
-**`Oscillator`** is pitch-free and algebraically composable:
+**`Generator`** (`base.py`) — abstract base class for all signal sources. All algebra lives here:
+- `gen1 + gen2` — additive synthesis (sum rendered signals)
+- `gen + scalar` / `scalar + gen` — DC offset
+- `gen1 * gen2` — ring modulation (pointwise product)
+- `gen * scalar` / `scalar * gen` — gain scaling
+- `-gen` — phase inversion; `gen1 - gen2` — subtraction
+
+Concrete generators: `Oscillator`, `WhiteNoise`, `PinkNoise`, `Wavetable`, `Sample`, `Granular`. All accept `**_kwargs` in `render()` so composites can forward unknown keyword args.
+
+**`Oscillator`** is pitch-free:
 - `Oscillator("sine", ratio, phase)` — defines a waveform template; `ratio` is a relative frequency multiplier
-- `osc1 + osc2` — additive synthesis (merges component lists)
-- `osc * scalar` — scale amplitude
-- `osc.render(dur, hz) -> Signal` — renders at the given frequency; `hz` can be a float or a time-varying `Signal` (pitch CV, vibrato, FM)
+- `.render(dur, hz) -> Signal` — renders at the given frequency; `hz` can be a float or a time-varying `Signal` (pitch CV, vibrato, FM)
+
+### Operators (`src/pysynth/operators.py`)
+
+**`Operator(generator, envelope)`** — pairs a Generator with an Envelope. Same algebra as Generator (`+`, `*`, `-`) plus FM:
+- `op1 << op2` — FM synthesis: op2's rendered output is added to op1's pitch
+- `.render(pitch, gate) -> Signal` — renders the generator at `pitch`, applies envelope triggered by `gate`
+
+FM topologies via explicit parenthesization:
+- `carrier << (mod1 << mod2)` — cascade: mod2 → mod1 → carrier
+- `carrier << (mod1 + mod2)` — parallel: both modulate carrier independently
+- `<<` is non-associative: `(a << b) << c` differs from `a << (b << c)`
+
+### Three-level algebra
+
+`render` is a **homomorphism** at each level — composing then rendering equals rendering then composing:
+- **Signal** — concrete audio, immediate operations
+- **Generator** — deferred waveform templates, resolved by `.render(dur, hz)`
+- **Operator** — generator + envelope pairs, resolved by `.render(pitch, gate)`
 
 ### Envelopes (`src/pysynth/envelopes/`)
 
@@ -65,22 +90,31 @@ All inherit `Effect`, all chainable via `|`: `LowPassFilter`, `HighPassFilter`, 
 
 #### CV/gate signal flow
 
-The Sequencer outputs control signals, not audio. Composition happens at the Signal level:
+The Sequencer outputs control signals, not audio. Composition can happen at Signal or Operator level:
 
 ```python
-# Monophonic
+# Signal-level (manual wiring)
 pitch, gate = Sequencer(notes, bpm=120).cv()
 audio  = Oscillator("saw").render(pitch.duration, pitch)
 amp    = adsr(0.01, 0.1, 0.7, 0.1).trigger(gate)
 cutoff = adsr(0.005, 0.2, 0.0, 0.05).trigger(gate) * 4000 + 300
 output = LowPassFilter(cutoff)(audio) * amp
 
+# Operator-level (each generator gets its own envelope)
+pitch, gate = Sequencer(notes, bpm=120).cv()
+bright = Operator(Oscillator("saw"), adsr(0.01, 0.1, 0.7, 0.3))
+sub    = Operator(Oscillator("sine", ratio=0.5), adsr(0.005, 0.5, 0.9, 0.5))
+output = (bright + sub).render(pitch, gate)
+
+# FM synthesis
+carrier = Operator(Oscillator("sine"), adsr(0.01, 0.1, 0.7, 0.3))
+mod     = Operator(Oscillator("sine", ratio=2) * 200, adsr(0.01, 0.3, 0.0, 0.1))
+output  = (carrier << mod).render(440.0, gate)
+
 # Polyphonic
 parts = PolySequencer.from_chords(chords, n_parts=4, bpm=120).cv()
-audio = sum(
-    Oscillator("saw").render(p.duration, p) * adsr(0.01, 0.1, 0.7, 0.1).trigger(g)
-    for p, g in parts
-)
+voice = Operator(Oscillator("saw"), adsr(0.01, 0.1, 0.7, 0.1))
+audio = sum(voice.render(p, g) for p, g in parts)
 ```
 
 ### Mixing (`src/pysynth/mixing/`)
@@ -93,4 +127,5 @@ audio = sum(
 - `int16` only at the output boundary
 - Signal algebra is the composition primitive; avoid special-casing
 - CV/gate signal flow: sequencers produce control signals, not audio
-- Oscillator pitch is supplied at render time via `.render(dur, hz)`, never stored on the oscillator
+- Generator pitch is supplied at render time via `.render(dur, hz)`, never stored on the generator
+- `render` is a homomorphism: `(a + b).render(...) == a.render(...) + b.render(...)` at both Generator and Operator level
