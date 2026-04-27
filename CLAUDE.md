@@ -73,7 +73,7 @@ Modulation signals (LFO-style) are expressed directly via Signal arithmetic: `Os
 
 ### Effects (`src/pysynth/effects/`)
 
-All inherit `Effect`, all chainable via `|`: `LowPassFilter`, `HighPassFilter`, `BandPassFilter`, `Gain`, `Compressor`, `Limiter`, `SimpleReverb`, `DatorroReverb`, `Delay`, `Echo`, `Tanh`, `Clip`, `Overdrive`.
+All inherit `Effect`, all chainable via `|`: `LowPassFilter`, `HighPassFilter`, `BandPassFilter`, `Gain`, `Compressor`, `Limiter`, `SimpleReverb`, `DatorroReverb`, `Delay`, `Echo`, and the waveshapers `Tanh`, `Clip`, `SoftClip`, `Fold`, `Rectifier`, `Chebyshev`, `Shaper`, `Overdrive` (in `effects/waveshaping.py`).
 
 ### Music (`src/pysynth/music/`)
 

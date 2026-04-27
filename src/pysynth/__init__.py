@@ -7,7 +7,7 @@ from pysynth.effects import (
     Gain, Compressor, Limiter,
     SimpleReverb, DatorroReverb,
     Delay, Echo,
-    Tanh, Clip, Overdrive,
+    Tanh, Clip, SoftClip, Fold, Rectifier, Chebyshev, Shaper, Overdrive,
 )
 from pysynth.music import Pitch, Note, Scale
 from pysynth.instruments import (
